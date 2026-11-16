@@ -1,0 +1,87 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: tenant-onboarding
+  title: Tenant onboarding (team namespace)
+  description: >-
+    Gives a team its own namespace in every cluster with quotas, limits, default-deny networking, RBAC bound to
+    its Entra group and an Argo CD project. Opens one PR in harborline-idp for Platform Engineering to review.
+  tags: [platform, onboarding, kubernetes]
+spec:
+  owner: group:default/platform-engineering
+  type: platform
+
+  parameters:
+    - title: Team
+      required: [team, entraGroupObjectId, costCenter, dataClassification]
+      properties:
+        team:
+          title: Team (Backstage group)
+          type: string
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: Group
+        entraGroupObjectId:
+          title: Entra ID group object ID for engineers
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        costCenter:
+          title: Cost centre
+          type: string
+          pattern: "^CC-[0-9]{4}$"
+        dataClassification:
+          title: Highest data classification
+          type: string
+          enum: [public, internal, confidential, restricted]
+    - title: Capacity (prod; dev gets half)
+      properties:
+        cpu:
+          title: CPU requests quota (cores)
+          type: integer
+          default: 8
+          minimum: 2
+          maximum: 64
+        memoryGi:
+          title: Memory requests quota (GiB)
+          type: integer
+          default: 16
+          minimum: 4
+          maximum: 256
+
+  steps:
+    - id: render
+      name: Render tenant manifests
+      action: fetch:template
+      input:
+        url: ./skeleton
+        targetPath: ./repo/gitops/tenants/${{ parameters.team | parseEntityRef | pick("name") }}
+        values:
+          team: ${{ parameters.team | parseEntityRef | pick("name") }}
+          groupId: ${{ parameters.entraGroupObjectId }}
+          costCenter: ${{ parameters.costCenter }}
+          dataClassification: ${{ parameters.dataClassification }}
+          cpu: ${{ parameters.cpu }}
+          memoryGi: ${{ parameters.memoryGi }}
+          devCpu: ${{ (parameters.cpu / 2) | round(0, "ceil") }}
+          devMemoryGi: ${{ (parameters.memoryGi / 2) | round(0, "ceil") }}
+
+    - id: pr
+      name: Open pull request
+      action: publish:github:pull-request
+      input:
+        repoUrl: github.com?owner=harborline&repo=harborline-idp
+        sourcePath: ./repo
+        branchName: tenant-${{ parameters.team | parseEntityRef | pick("name") }}
+        title: "feat(tenant): onboard ${{ parameters.team | parseEntityRef | pick('name') }}"
+        description: |
+          Tenant onboarding generated from Backstage.
+          - Namespace, quota (${{ parameters.cpu }} CPU / ${{ parameters.memoryGi }} GiB in prod), limits, default-deny
+          - RBAC: view for Entra group `${{ parameters.entraGroupObjectId }}` (debug access in dev only)
+          - Argo CD AppProject restricted to the namespace
+          Reviewer checklist: cost centre valid · group exists · classification matches data handled.
+
+  output:
+    links:
+      - title: Pull request
+        url: ${{ steps.pr.output.remoteUrl }}

@@ -1,0 +1,48 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: rbac-hygiene
+  annotations:
+    policies.kyverno.io/title: RBAC hygiene
+    policies.kyverno.io/category: Identity
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Blocks wildcard verbs/resources in tenant Roles and any tenant binding to cluster-admin (CIS AKS 4.1.1, 4.1.3).
+    harborline.io/controls: "CIS-4.1.1 CIS-4.1.3 NIST-PR.AA-05"
+spec:
+  background: true
+  rules:
+    - name: no-wildcards-in-tenant-roles
+      match:
+        any:
+          - resources:
+              kinds: [Role]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        message: "Wildcards ('*') are not allowed in tenant Role rules."
+        deny:
+          conditions:
+            any:
+              - key: "{{ contains(to_string(request.object.rules[].verbs[]), '*') }}"
+                operator: Equals
+                value: true
+              - key: "{{ contains(to_string(request.object.rules[].resources[]), '*') }}"
+                operator: Equals
+                value: true
+    - name: no-cluster-admin-binding-in-tenants
+      match:
+        any:
+          - resources:
+              kinds: [RoleBinding]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        message: "Tenants cannot bind cluster-admin."
+        pattern:
+          roleRef:
+            name: "!cluster-admin"

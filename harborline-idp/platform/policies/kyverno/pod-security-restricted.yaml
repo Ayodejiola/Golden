@@ -1,0 +1,28 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pod-security-restricted
+  annotations:
+    policies.kyverno.io/title: Pod Security Standards (restricted)
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Enforces the Kubernetes Pod Security Standards "restricted" profile in tenant namespaces
+      (CIS AKS 4.2.1-4.2.9, 4.6.2, 4.6.3). Azure Policy enforces the same baseline as a second layer.
+    harborline.io/controls: "CIS-4.2.x CIS-4.6.2 CIS-4.6.3 NIST-PR.PS-01"
+spec:
+  background: true
+  rules:
+    - name: restricted
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        podSecurity:
+          level: restricted
+          version: latest

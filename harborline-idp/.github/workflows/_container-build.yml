@@ -1,0 +1,155 @@
+# Reusable trusted builder (SLSA build L3 pattern): every Harborline image is built, scanned, SBOM'd, signed and
+# attested HERE, so the Sigstore certificate identity is always this workflow on main — which is exactly what
+# Kyverno's verify-image-signatures policy pins. Service repos call it cross-repo:
+#   uses: harborline/harborline-idp/.github/workflows/_container-build.yml@main
+name: _container-build
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Repository path in ACR, e.g. insurance/policy-api
+        type: string
+        required: true
+      context:
+        description: Docker build context
+        type: string
+        required: true
+      version:
+        description: Human-readable version tag (informational; deploys use the digest)
+        type: string
+        default: ""
+      push:
+        description: Push, sign and attest (false = build + scan only, e.g. for PRs)
+        type: boolean
+        default: false
+    outputs:
+      digest:
+        description: Image digest (sha256:...)
+        value: ${{ jobs.build.outputs.digest }}
+      image:
+        description: Fully qualified image name without tag
+        value: ${{ jobs.build.outputs.image }}
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: acrhblmgmtsharedcac01.azurecr.io
+
+jobs:
+  build:
+    runs-on: ${{ inputs.push && fromJSON('{"group":"harborline-build"}') || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write          # OIDC to Azure (ACR push) and Sigstore (keyless signing)
+      attestations: write      # GitHub artifact attestations
+      packages: read
+      security-events: write   # Trivy SARIF upload
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - id: meta
+        run: |
+          echo "image=${REGISTRY}/${{ inputs.image }}" >> "$GITHUB_OUTPUT"
+          echo "version=${{ inputs.version || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build (local, for scanning)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          load: true
+          tags: ${{ steps.meta.outputs.image }}:scan
+          provenance: false
+          cache-from: type=gha,scope=${{ inputs.image }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.image }}
+
+      - name: Scan image (Trivy) — fail on fixable HIGH/CRITICAL
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}:scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: sarif
+          output: trivy.sarif
+          trivyignores: .trivyignore
+
+      - name: Upload scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-${{ inputs.image }}
+
+      - name: SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.image }}:scan
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: true
+
+      - name: Azure login (acr-push identity, OIDC)
+        if: inputs.push
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.ACR_PUSH_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.MANAGEMENT_SUBSCRIPTION_ID }}
+
+      - name: Push
+        id: push
+        if: inputs.push
+        run: |
+          az acr login --name "${REGISTRY%%.*}"
+          docker tag "${{ steps.meta.outputs.image }}:scan" "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
+          docker push "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}"
+          digest="$(docker inspect --format '{{index .RepoDigests 0}}' "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}" | cut -d@ -f2)"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "Pushed ${{ steps.meta.outputs.image }}@${digest}" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: sigstore/cosign-installer@v3
+        if: inputs.push
+
+      - name: Sign (Sigstore keyless)
+        if: inputs.push
+        env:
+          REF: ${{ steps.meta.outputs.image }}@${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$REF"
+
+      - name: Attest SBOM and SLSA v1 provenance (cosign, verified by Kyverno)
+        if: inputs.push
+        env:
+          REF: ${{ steps.meta.outputs.image }}@${{ steps.push.outputs.digest }}
+        run: |
+          jq -n \
+            --arg repo "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --arg ref "${GITHUB_REF}" --arg sha "${GITHUB_SHA}" \
+            --arg path "${GITHUB_WORKFLOW_REF#*/*/}" \
+            --arg builder "${GITHUB_SERVER_URL}/${GITHUB_WORKFLOW_REF}" \
+            --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}" \
+            --arg event "${GITHUB_EVENT_NAME}" \
+            '{buildDefinition: {buildType: "https://actions.github.io/buildtypes/workflow/v1",
+                externalParameters: {workflow: {ref: $ref, repository: $repo, path: $path}},
+                internalParameters: {github: {event_name: $event}},
+                resolvedDependencies: [{uri: ("git+" + $repo + "@" + $ref), digest: {gitCommit: $sha}}]},
+              runDetails: {builder: {id: $builder}, metadata: {invocationId: $run}}}' > provenance.json
+          cosign attest --yes --type https://slsa.dev/provenance/v1 --predicate provenance.json "$REF"
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "$REF"
+
+      - name: GitHub artifact attestation (gh attestation verify)
+        if: inputs.push
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.meta.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

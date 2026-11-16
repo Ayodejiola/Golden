@@ -1,0 +1,54 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict image registries and require digests
+    policies.kyverno.io/category: Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Only images from the Harborline registry may run, and tenant workloads must reference images by digest
+      (no mutable tags, no :latest). Third-party images are imported into ACR after scanning (ADR-0012).
+    harborline.io/controls: "CIS-5.1.4 NIST-PR.PS-02 NIST-GV.SC-07"
+spec:
+  background: true
+  rules:
+    - name: harborline-registry-only
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [kube-system, gatekeeper-system, app-routing-system, azure-arc]
+      validate:
+        failureAction: Enforce
+        message: "Images must come from acrhblmgmtsharedcac01.azurecr.io (import third-party images via the mirror pipeline)."
+        foreach:
+          - list: "request.object.spec.[ephemeralContainers, initContainers, containers][]"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.image }}"
+                    operator: NotEquals
+                    value: "acrhblmgmtsharedcac01.azurecr.io/*"
+    - name: require-digest
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        message: "Tenant images must be pinned by digest (image@sha256:...). The pipeline writes digests to GitOps values."
+        foreach:
+          - list: "request.object.spec.[initContainers, containers][]"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ contains(element.image, '@sha256:') }}"
+                    operator: Equals
+                    value: false

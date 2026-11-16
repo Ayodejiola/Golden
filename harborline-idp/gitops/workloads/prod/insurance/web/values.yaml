@@ -1,0 +1,72 @@
+# web (prod) — React SPA served by unprivileged NGINX. No Azure identity, no data access.
+team: insurance-digital
+system: policy-portal
+component: policy-portal-web
+tier: tier-1
+dataClassification: internal
+environment: prod
+
+image:
+  repository: acrhblmgmtsharedcac01.azurecr.io/insurance/web
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  tag: "0.1.0"
+
+workloadIdentity:
+  enabled: false
+
+config:
+  WEB_API_BASE: /api
+  WEB_ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
+  WEB_ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000030e0b
+  WEB_API_SCOPE: api://harborline-policy-api/Policies.ReadWrite
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+probes:
+  liveness:
+    path: /healthz
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    path: /healthz
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+  startup:
+    path: /healthz
+    periodSeconds: 2
+    failureThreshold: 15
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 6
+
+topologySpread:
+  zoneWhenUnsatisfiable: DoNotSchedule
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+ingress:
+  enabled: true
+  host: portal.harborline.example
+  paths:
+    - path: /
+      pathType: Prefix
+  keyVaultCertificateUri: https://kv-hbl-plat-prod-cac01.vault.azure.net/certificates/portal-tls
+
+networkPolicy:
+  enabled: true
+  allowFromIngressController: true
+  egress:
+    allowOtelCollector: false
+    allowEntraId: false
+
+observability:
+  otel:
+    enabled: false

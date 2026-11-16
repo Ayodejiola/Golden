@@ -1,0 +1,180 @@
+openapi: 3.1.0
+info:
+  title: Harborline Policy API
+  version: 0.1.0
+  description: >-
+    Quotes, policy binding and first notice of loss (FNOL). Authentication: Microsoft Entra ID bearer tokens
+    (audience api://harborline-policy-api). Errors use RFC 9457 problem details. Contract tests in CI compare this
+    file with the FastAPI-generated schema (/api/openapi.json).
+servers:
+  - url: https://portal.harborline.example/api
+security:
+  - entra: [Policies.ReadWrite]
+paths:
+  /v1/quotes:
+    post:
+      summary: Rate a risk and issue a quote
+      security: [{ entra: [Policies.ReadWrite] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuoteRequest" }
+      responses:
+        "201": { description: Quote issued, content: { application/json: { schema: { $ref: "#/components/schemas/Quote" } } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /v1/policies:
+    post:
+      summary: Bind a quote into a policy (emits policy.bound)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [quote_id, accept_terms]
+              properties:
+                quote_id: { type: string, format: uuid }
+                accept_terms: { const: true }
+      responses:
+        "201": { description: Policy bound, content: { application/json: { schema: { $ref: "#/components/schemas/Policy" } } } }
+        "409": { $ref: "#/components/responses/Problem" }
+    get:
+      summary: List the caller's policies
+      responses:
+        "200":
+          description: Policies
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Policy" } }
+  /v1/policies/{policy_number}:
+    get:
+      summary: Get one of the caller's policies
+      parameters:
+        - { name: policy_number, in: path, required: true, schema: { type: string, pattern: "^HBL-(AU|HO)-\\d{4}-\\d{6}$" } }
+      responses:
+        "200": { description: Policy, content: { application/json: { schema: { $ref: "#/components/schemas/Policy" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /v1/claims:
+    post:
+      summary: Submit first notice of loss (emits claim.submitted)
+      security: [{ entra: [Claims.Submit] }, { entra: [Policies.ReadWrite] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClaimRequest" }
+      responses:
+        "201": { description: Claim received, content: { application/json: { schema: { $ref: "#/components/schemas/Claim" } } } }
+        "404": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+components:
+  securitySchemes:
+    entra:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize
+          tokenUrl: https://login.microsoftonline.com/organizations/oauth2/v2.0/token
+          scopes:
+            Policies.ReadWrite: Quote, bind and read policies
+            Claims.Submit: Submit and read claims
+  responses:
+    Problem:
+      description: RFC 9457 problem details
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            properties:
+              type: { type: string }
+              title: { type: string }
+              status: { type: integer }
+              detail: { type: [string, "null"] }
+              correlation_id: { type: [string, "null"] }
+  schemas:
+    QuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [product, insured, risk, effective_date]
+      properties:
+        product: { enum: [auto, home] }
+        insured:
+          type: object
+          additionalProperties: false
+          required: [first_name, last_name, email, date_of_birth, province]
+          properties:
+            first_name: { type: string, maxLength: 80 }
+            last_name: { type: string, maxLength: 80 }
+            email: { type: string, format: email }
+            date_of_birth: { type: string, format: date }
+            province: { enum: [AB, BC, MB, NB, NL, NS, ON, PE, QC, SK] }
+        risk:
+          oneOf:
+            - type: object
+              required: [kind, vehicle_year, vehicle_value, annual_km, prior_claims]
+              properties:
+                kind: { const: auto }
+                vehicle_year: { type: integer }
+                vehicle_value: { type: string, format: decimal }
+                annual_km: { type: integer }
+                prior_claims: { type: integer }
+            - type: object
+              required: [kind, dwelling_value, year_built, construction, prior_claims]
+              properties:
+                kind: { const: home }
+                dwelling_value: { type: string, format: decimal }
+                year_built: { type: integer }
+                construction: { enum: [wood, masonry] }
+                prior_claims: { type: integer }
+        deductible: { enum: [500, 1000, 2500], default: 1000 }
+        effective_date: { type: string, format: date }
+    Quote:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        product: { enum: [auto, home] }
+        status: { enum: [quoted, referred, declined, bound] }
+        premium:
+          type: [object, "null"]
+          properties:
+            annual_premium: { type: string, format: decimal }
+            monthly_premium: { type: string, format: decimal }
+            factors: { type: object, additionalProperties: { type: string } }
+        reasons: { type: array, items: { type: string } }
+        expires_at: { type: string, format: date-time }
+        currency: { const: CAD }
+    Policy:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        policy_number: { type: string }
+        product: { enum: [auto, home] }
+        status: { enum: [active, cancelled] }
+        effective_date: { type: string, format: date }
+        expiry_date: { type: string, format: date }
+        annual_premium: { type: string, format: decimal }
+    ClaimRequest:
+      type: object
+      additionalProperties: false
+      required: [policy_number, loss_date, loss_type, description, estimated_amount]
+      properties:
+        policy_number: { type: string, pattern: "^HBL-(AU|HO)-\\d{4}-\\d{6}$" }
+        loss_date: { type: string, format: date }
+        loss_type: { enum: [collision, theft, fire, water, weather, liability] }
+        description: { type: string, minLength: 10, maxLength: 2000 }
+        estimated_amount: { type: string, format: decimal }
+    Claim:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        claim_number: { type: string }
+        policy_number: { type: string }
+        status: { enum: [submitted, triaged, rejected] }
+        loss_type: { type: string }
+        loss_date: { type: string, format: date }
+        triage_outcome: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }

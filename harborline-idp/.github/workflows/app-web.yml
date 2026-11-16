@@ -1,0 +1,67 @@
+name: app-web
+
+on:
+  pull_request:
+    paths: [apps/insurance/web/**, .github/workflows/app-web.yml]
+  push:
+    branches: [main]
+    paths: [apps/insurance/web/**, .github/workflows/app-web.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-web-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/insurance/web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/insurance/web/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run build
+
+  image:
+    needs: ci
+    uses: ./.github/workflows/_container-build.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: read
+      security-events: write
+    with:
+      image: insurance/web
+      context: apps/insurance/web
+      version: 0.1.${{ github.run_number }}
+      push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+
+  deploy-dev:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: image
+    uses: ./.github/workflows/_gitops-update.yml
+    with:
+      values-file: gitops/workloads/dev/insurance/web/values.yaml
+      digest: ${{ needs.image.outputs.digest }}
+      version: 0.1.${{ github.run_number }}
+      auto-merge: true
+      title: web 0.1.${{ github.run_number }} to dev
+    secrets:
+      GITOPS_APP_ID: ${{ secrets.GITOPS_APP_ID }}
+      GITOPS_APP_PRIVATE_KEY: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}

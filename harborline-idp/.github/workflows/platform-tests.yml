@@ -1,0 +1,36 @@
+# Tests for platform code that is not a deployable service: Claude Code guardrail hooks, the platform MCP
+# server, Conftest rules and repository-level hygiene.
+name: platform-tests
+
+on:
+  pull_request:
+    paths: [.claude/**, ai/**, platform/policies/conftest/**, scripts/**, .github/workflows/platform-tests.yml]
+  push:
+    branches: [main]
+    paths: [.claude/**, ai/**, platform/policies/conftest/**, scripts/**]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest "mcp>=1.9" pyyaml
+      - name: Guardrail hook tests
+        run: python -m pytest -q .claude/hooks/tests
+      - name: MCP server tests
+        run: python -m pytest -q ai/mcp-servers/platform-catalog/tests
+      - name: Conftest rules
+        run: |
+          curl -sSL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz | tar -xz conftest
+          ./conftest verify --policy platform/policies/conftest
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh

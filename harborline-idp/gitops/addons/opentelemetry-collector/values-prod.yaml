@@ -1,0 +1,19 @@
+serviceAccount:
+  annotations:
+    azure.workload.identity/client-id: 00000000-0000-0000-0000-0000000c0003   # id-plat-otel-collector-prod
+config:
+  processors:
+    resource/env:
+      attributes:
+        - key: cloud.provider
+          value: azure
+          action: upsert
+        - key: cloud.region
+          value: canadacentral
+          action: upsert
+        - key: deployment.environment.name
+          value: prod
+          action: upsert
+        - key: k8s.cluster.name
+          value: aks-plat-prod-cac-01
+          action: upsert

@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backstage
+  labels:
+    harborline.io/owner: platform-product
+---
+# Backstage secrets from Key Vault. Synced into a Kubernetes Secret because the chart consumes env vars.
+# EXC-0001 covers the database password; the GitHub App key and Entra client secret are rotated every 90 days
+# (docs/operations/runbooks/secret-and-credential-rotation.md).
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: backstage
+  namespace: backstage
+spec:
+  provider: azure
+  parameters:
+    usePodIdentity: "false"
+    clientID: 00000000-0000-0000-0000-0000000f0003
+    keyvaultName: kv-hbl-plat-prod-cac01
+    tenantId: 00000000-0000-0000-0000-000000000000
+    objects: |
+      array:
+        - |
+          objectName: backstage-db-password
+          objectType: secret
+        - |
+          objectName: backstage-github-app-private-key
+          objectType: secret
+        - |
+          objectName: backstage-backend-secret
+          objectType: secret
+        - |
+          objectName: backstage-entra-client-secret
+          objectType: secret
+        - |
+          objectName: backstage-github-app-client-secret
+          objectType: secret
+        - |
+          objectName: backstage-github-app-webhook-secret
+          objectType: secret
+  secretObjects:
+    - secretName: backstage-secrets
+      type: Opaque
+      data:
+        - objectName: backstage-db-password
+          key: POSTGRES_PASSWORD
+        - objectName: backstage-github-app-private-key
+          key: GITHUB_APP_PRIVATE_KEY
+        - objectName: backstage-backend-secret
+          key: BACKEND_SECRET
+        - objectName: backstage-entra-client-secret
+          key: AUTH_MICROSOFT_CLIENT_SECRET
+        - objectName: backstage-github-app-client-secret
+          key: GITHUB_APP_CLIENT_SECRET
+        - objectName: backstage-github-app-webhook-secret
+          key: GITHUB_APP_WEBHOOK_SECRET

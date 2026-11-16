@@ -1,0 +1,34 @@
+{
+  "UserConfig": {
+    "Namespaces": [
+      {
+        "Name": "sbemulatorns",
+        "Queues": [],
+        "Topics": [
+          {
+            "Name": "claims",
+            "Properties": { "DefaultMessageTimeToLive": "PT1H", "DuplicateDetectionHistoryTimeWindow": "PT10M", "RequiresDuplicateDetection": true },
+            "Subscriptions": [
+              {
+                "Name": "triage",
+                "Properties": { "DeadLetteringOnMessageExpiration": true, "MaxDeliveryCount": 5, "LockDuration": "PT1M" },
+                "Rules": [
+                  { "Name": "claim-submitted", "Properties": { "FilterType": "Sql", "SqlFilter": { "SqlExpression": "eventType = 'claim.submitted'" } } }
+                ]
+              },
+              { "Name": "audit", "Properties": { "DeadLetteringOnMessageExpiration": true, "MaxDeliveryCount": 10, "LockDuration": "PT1M" } }
+            ]
+          },
+          {
+            "Name": "policies",
+            "Properties": { "DefaultMessageTimeToLive": "PT1H", "DuplicateDetectionHistoryTimeWindow": "PT10M", "RequiresDuplicateDetection": true },
+            "Subscriptions": [
+              { "Name": "analytics", "Properties": { "DeadLetteringOnMessageExpiration": true, "MaxDeliveryCount": 10, "LockDuration": "PT1M" } }
+            ]
+          }
+        ]
+      }
+    ],
+    "Logging": { "Type": "File" }
+  }
+}

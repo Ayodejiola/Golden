@@ -1,0 +1,23 @@
+# Root "app of apps" for aks-plat-dev-cac-01. Applied once by scripts/bootstrap-argocd.sh dev.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/harborline/harborline-idp.git
+    targetRevision: main
+    path: gitops/clusters/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

@@ -1,0 +1,9 @@
+terraform 1.9.8
+tflint 0.54.0
+helm 3.16.3
+kubectl 1.31.3
+kubeconform 0.6.7
+kyverno 1.13.2
+conftest 0.56.0
+python 3.12.8
+nodejs 22.11.0

@@ -1,0 +1,37 @@
+%% Source of truth: docs/security/threat-model-platform.md (keep in sync; `make diagrams` renders SVG)
+flowchart LR
+  subgraph TB1[Internet - untrusted]
+    user([Customer])
+    attacker([Attacker])
+  end
+  subgraph TB2[GitHub - SaaS, semi-trusted]
+    repo[(Repositories)]
+    gha[Actions runners<br/>ephemeral]
+  end
+  subgraph TB3[Azure hub - platform trusted]
+    fw[Firewall]
+    dns[(Private DNS)]
+  end
+  subgraph TB4[Spoke / AKS - workload zone]
+    waf[App Gateway WAF]
+    ing[NGINX internal]
+    pods[Tenant pods]
+    argo[Argo CD]
+    kyv[Kyverno]
+  end
+  subgraph TB5[Data zone - private endpoints]
+    kv[(Key Vault)]
+    pg[(PostgreSQL)]
+    sb[[Service Bus]]
+    acr[(ACR)]
+  end
+  subgraph TB6[Developer workstation]
+    cc[Claude Code + MCP]
+  end
+  user --> waf --> ing --> pods
+  attacker -.-> waf
+  repo --> gha -->|OIDC| acr
+  argo -->|pull| repo
+  pods --> pg & sb & kv
+  pods -->|egress| fw
+  cc --> repo

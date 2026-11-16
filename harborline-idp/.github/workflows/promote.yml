@@ -1,0 +1,95 @@
+# Promotes the exact, already-verified image digest from one environment to the next by PR.
+# Nothing is rebuilt: what was tested in the lower environment is byte-for-byte what reaches prod.
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      team:
+        description: Team folder under gitops/workloads/<env>/
+        required: true
+        default: insurance
+      app:
+        description: Application
+        required: true
+        type: choice
+        options: [policy-api, claims-worker, web]
+      from:
+        description: Source environment
+        required: true
+        type: choice
+        options: [dev, stg]
+      change-ticket:
+        description: Change record (required for prod)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      to: ${{ steps.p.outputs.to }}
+      digest: ${{ steps.p.outputs.digest }}
+      version: ${{ steps.p.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: p
+        env:
+          TEAM: ${{ inputs.team }}
+          APP: ${{ inputs.app }}
+          FROM: ${{ inputs.from }}
+          TICKET: ${{ inputs.change-ticket }}
+        run: |
+          [[ "$TEAM" =~ ^[a-z0-9-]+$ ]] || { echo "invalid team"; exit 1; }
+          to=$([ "$FROM" = dev ] && echo stg || echo prod)
+          if [ "$to" = prod ] && [ -z "$TICKET" ]; then echo "::error::change-ticket is required for prod"; exit 1; fi
+          src="gitops/workloads/${FROM}/${TEAM}/${APP}/values.yaml"
+          digest=$(yq '.image.digest' "$src"); version=$(yq '.image.tag' "$src")
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] && [[ "$digest" != sha256:0000000000000000000000000000000000000000000000000000000000000000 ]] \
+            || { echo "::error::no deployable digest in $src"; exit 1; }
+          echo "to=$to" >> "$GITHUB_OUTPUT"; echo "digest=$digest" >> "$GITHUB_OUTPUT"; echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: plan
+    runs-on: { group: harborline-build }
+    permissions:
+      contents: read
+      id-token: write
+      attestations: read
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.ACR_PUSH_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.MANAGEMENT_SUBSCRIPTION_ID }}
+      - uses: sigstore/cosign-installer@v3
+      - name: Re-verify signature and provenance before promotion
+        env:
+          REF: acrhblmgmtsharedcac01.azurecr.io/${{ inputs.team }}/${{ inputs.app }}@${{ needs.plan.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          az acr login --name acrhblmgmtsharedcac01
+          ID='^https://github\.com/harborline/[A-Za-z0-9_.-]+/\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml@refs/heads/main$'
+          cosign verify --certificate-identity-regexp "$ID" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "$REF" > /dev/null
+          cosign verify-attestation --type https://slsa.dev/provenance/v1 --certificate-identity-regexp "$ID" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "$REF" > /dev/null
+          gh attestation verify "oci://$REF" --owner harborline
+          echo "Verified $REF" >> "$GITHUB_STEP_SUMMARY"
+
+  pr:
+    needs: [plan, verify]
+    uses: ./.github/workflows/_gitops-update.yml
+    with:
+      values-file: gitops/workloads/${{ needs.plan.outputs.to }}/${{ inputs.team }}/${{ inputs.app }}/values.yaml
+      digest: ${{ needs.plan.outputs.digest }}
+      version: ${{ needs.plan.outputs.version }}
+      auto-merge: false
+      title: promote ${{ inputs.app }} ${{ needs.plan.outputs.version }} ${{ inputs.from }} → ${{ needs.plan.outputs.to }} ${{ inputs.change-ticket }}
+    secrets:
+      GITOPS_APP_ID: ${{ secrets.GITOPS_APP_ID }}
+      GITOPS_APP_PRIVATE_KEY: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}

@@ -1,0 +1,36 @@
+# Tenant AppProject (lives with the tenant so onboarding is one self-contained PR from the Backstage template).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: insurance
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Insurance Digital team workloads (policy portal).
+  sourceRepos:
+    - https://github.com/harborline/harborline-idp.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: insurance
+  # Tenants cannot create cluster-scoped resources, nor change quotas, limits or RBAC (platform-owned).
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+  orphanedResources:
+    warn: true
+  roles:
+    - name: developers
+      description: Insurance Digital engineers
+      policies:
+        - p, proj:insurance:developers, applications, get, insurance/*, allow
+        - p, proj:insurance:developers, logs, get, insurance/*, allow
+      groups:
+        - 00000000-0000-0000-0000-00000000b001

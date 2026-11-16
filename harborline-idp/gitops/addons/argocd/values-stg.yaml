@@ -1,0 +1,43 @@
+# Argo CD values for the stg cluster (aks-plat-stg-cac-01).
+# Client IDs come from Terraform outputs (stack: platform, output: addon_identity_client_ids).
+global:
+  domain: argocd.stg.harborline.example
+
+configs:
+  cm:
+    url: https://argocd.stg.harborline.example
+    oidc.config: |
+      name: Microsoft Entra ID
+      issuer: https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0
+      clientID: 00000000-0000-0000-0000-0000000d0002
+      azure:
+        useWorkloadIdentity: true
+      requestedIDTokenClaims:
+        groups:
+          essential: true
+      requestedScopes: ["openid", "profile", "email"]
+  rbac:
+    policy.csv: |
+      g, 00000000-0000-0000-0000-00000000a001, role:admin
+      p, role:engineer, applications, get, */*, allow
+      p, role:engineer, logs, get, */*, allow
+      g, 00000000-0000-0000-0000-00000000a002, role:engineer
+      p, role:tenant-insurance, applications, get, insurance/*, allow
+      p, role:tenant-insurance, logs, get, insurance/*, allow
+      p, role:tenant-insurance, applications, sync, insurance/*, allow
+      g, 00000000-0000-0000-0000-00000000b001, role:tenant-insurance
+
+server:
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: 00000000-0000-0000-0000-0000000d0002   # Entra app registration (SSO) with FIC
+  ingress:
+    hostname: argocd.stg.harborline.example
+    annotations:
+      kubernetes.azure.com/tls-cert-keyvault-uri: https://kv-hbl-plat-stg-cac01.vault.azure.net/certificates/wildcard-internal
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+
+repoServer:
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: 00000000-0000-0000-0000-0000000e0002   # id-plat-argocd-repo-server-stg (AcrPull)

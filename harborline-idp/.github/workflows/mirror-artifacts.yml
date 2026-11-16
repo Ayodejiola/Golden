@@ -1,0 +1,54 @@
+# Imports approved third-party images and Helm charts (platform/mirror/artifacts.yaml) into ACR after scanning.
+# Clusters never pull from public registries (Kyverno restrict-image-registries, firewall allow-list).
+name: mirror-artifacts
+
+on:
+  push:
+    branches: [main]
+    paths: [platform/mirror/artifacts.yaml]
+  schedule:
+    - cron: "11 7 * * 2"   # weekly rescan + refresh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: { group: harborline-build }
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.ACR_PUSH_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.MANAGEMENT_SUBSCRIPTION_ID }}
+      - uses: azure/setup-helm@v4
+      - name: Install Trivy
+        run: curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/v0.58.1/contrib/install.sh | sh -s -- -b /usr/local/bin v0.58.1
+      - name: Scan and import images
+        run: |
+          REG=$(yq '.registry' platform/mirror/artifacts.yaml)
+          for i in $(seq 0 $(( $(yq '.images | length' platform/mirror/artifacts.yaml) - 1 ))); do
+            src=$(yq ".images[$i].source" platform/mirror/artifacts.yaml); dst=$(yq ".images[$i].target" platform/mirror/artifacts.yaml)
+            echo "::group::$src"
+            trivy image --quiet --severity CRITICAL --ignore-unfixed --exit-code 1 --ignorefile .trivyignore "$src"
+            az acr import --name "${REG%%.*}" --source "$src" --image "$dst" --force
+            echo "::endgroup::"
+          done
+      - name: Mirror Helm charts as OCI artifacts
+        run: |
+          REG=$(yq '.registry' platform/mirror/artifacts.yaml)
+          az acr login --name "${REG%%.*}"
+          for i in $(seq 0 $(( $(yq '.charts | length' platform/mirror/artifacts.yaml) - 1 ))); do
+            name=$(yq ".charts[$i].name" platform/mirror/artifacts.yaml); repo=$(yq ".charts[$i].repo" platform/mirror/artifacts.yaml)
+            ver=$(yq ".charts[$i].version" platform/mirror/artifacts.yaml)
+            helm pull "$name" --repo "$repo" --version "$ver"
+            helm push "${name}-${ver}.tgz" "oci://${REG}/helm"
+          done

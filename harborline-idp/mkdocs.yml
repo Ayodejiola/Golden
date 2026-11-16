@@ -1,0 +1,117 @@
+site_name: Harborline IDP
+site_description: Internal Developer Platform — architecture, golden paths, security, operations
+repo_url: https://github.com/harborline/harborline-idp
+edit_uri: edit/main/docs/
+docs_dir: docs
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - search.suggest
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Deployment guide: deployment-guide.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Landing zone: architecture/landing-zone.md
+      - Network: architecture/network.md
+      - Identity and access: architecture/identity-and-access.md
+      - AKS platform: architecture/aks-platform.md
+      - Data and messaging: architecture/data-and-messaging.md
+      - Observability: architecture/observability.md
+      - GitOps and delivery: architecture/gitops-and-delivery.md
+      - Well-Architected assessment: architecture/well-architected.md
+  - Decisions (ADRs):
+      - adr/index.md
+      - adr/0000-template.md
+      - adr/0001-use-aks-as-the-container-platform.md
+      - adr/0002-terraform-with-thin-in-house-modules-and-per-stack-state.md
+      - adr/0003-hub-spoke-network-with-azure-firewall-and-private-only-paas.md
+      - adr/0004-gitops-with-argo-cd-pull-based-per-cluster.md
+      - adr/0005-workload-identity-everywhere-no-long-lived-secrets.md
+      - adr/0006-azure-cni-overlay-powered-by-cilium.md
+      - adr/0007-postgresql-flexible-server-with-entra-only-authentication.md
+      - adr/0008-service-bus-premium-with-transactional-outbox.md
+      - adr/0009-opentelemetry-standard-with-azure-monitor-backend.md
+      - adr/0010-backstage-as-the-developer-portal.md
+      - adr/0011-layered-admission-control-kyverno-and-azure-policy.md
+      - adr/0012-sigstore-signing-slsa-provenance-and-digest-pinned-deploys.md
+      - adr/0013-github-hosted-runners-with-azure-private-networking.md
+      - adr/0014-ai-assisted-development-with-claude-code-and-mcp-under-guardrails.md
+      - adr/0015-app-gateway-waf-in-front-of-internal-managed-nginx.md
+  - Security:
+      - Controls matrix (NIST CSF 2.0): security/controls-matrix.md
+      - CIS AKS Benchmark: security/cis-aks-benchmark.md
+      - OWASP ASVS 5.0: security/owasp-asvs.md
+      - Threat model — platform: security/threat-model-platform.md
+      - Threat model — insurance app: security/threat-model-insurance-app.md
+      - Supply chain: security/supply-chain-security.md
+      - Secrets management: security/secrets-management.md
+      - Vulnerability management: security/vulnerability-management.md
+  - Governance:
+      - Golden path: governance/golden-path.md
+      - Standards: governance/standards.md
+      - Tenancy model: governance/tenancy-model.md
+      - Scorecards: governance/scorecards.md
+      - Data classification: governance/data-classification.md
+      - Change management: governance/change-management.md
+      - Exceptions: governance/exceptions-process.md
+      - FinOps: governance/finops.md
+  - Operations:
+      - SLOs: operations/slos.md
+      - On-call: operations/oncall.md
+      - Incident management: operations/incident-management.md
+      - Disaster recovery: operations/disaster-recovery.md
+      - Day-2 operations: operations/day2-operations.md
+      - Runbooks:
+          - operations/runbooks/index.md
+          - operations/runbooks/aks-node-not-ready.md
+          - operations/runbooks/aks-cluster-upgrade.md
+          - operations/runbooks/argocd-sync-failure.md
+          - operations/runbooks/image-admission-denied.md
+          - operations/runbooks/high-error-rate.md
+          - operations/runbooks/high-latency.md
+          - operations/runbooks/postgres-failover.md
+          - operations/runbooks/postgres-connection-saturation.md
+          - operations/runbooks/servicebus-dead-letter.md
+          - operations/runbooks/outbox-backlog.md
+          - operations/runbooks/egress-blocked-by-firewall.md
+          - operations/runbooks/certificate-expiry.md
+          - operations/runbooks/secret-and-credential-rotation.md
+          - operations/runbooks/security-incident-response.md
+  - AI-assisted development:
+      - Guardrails: ai/guardrails.md
+      - Usage policy: ai/usage-policy.md
+      - MCP servers: ai/mcp-servers.md
+      - Prompt library: ai/prompt-library.md
+  - Developer portal:
+      - Backstage: developer-portal/backstage.md
+      - Templates: developer-portal/templates.md
+  - Reference app: apps/insurance.md
+  - Platform product:
+      - Charter: product/charter.md
+      - Roadmap: product/roadmap.md
+      - Personas and journeys: product/personas-and-journeys.md
+      - Metrics: product/metrics.md

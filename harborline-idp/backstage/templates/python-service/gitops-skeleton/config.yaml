@@ -1,0 +1,5 @@
+app: ${{ values.name }}
+team: ${{ values.team }}
+project: ${{ values.team }}
+namespace: ${{ values.team }}
+chartRevision: main

@@ -1,0 +1,33 @@
+name: Platform request
+description: Ask the platform team for a capability, exception or help
+labels: [platform-request, triage]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Request type
+      options:
+        - New capability on the golden path
+        - Policy exception (see exceptions process)
+        - Quota / capacity increase
+        - Onboarding help
+        - Other
+    validations: { required: true }
+  - type: input
+    id: team
+    attributes:
+      label: Requesting team (Backstage group)
+      placeholder: group:default/insurance-digital
+    validations: { required: true }
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you need and why?
+      description: Outcome, not solution. Include deadlines and business impact.
+    validations: { required: true }
+  - type: dropdown
+    id: data
+    attributes:
+      label: Highest data classification involved
+      options: [Public, Internal, Confidential, Restricted (PII/PHI/PCI)]
+    validations: { required: true }

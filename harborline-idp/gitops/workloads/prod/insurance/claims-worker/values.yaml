@@ -1,0 +1,66 @@
+# claims-worker (prod) — consumes claims/triage from Service Bus; scaled by KEDA on backlog.
+team: insurance-digital
+system: policy-portal
+component: claims-worker
+tier: tier-2
+dataClassification: restricted
+environment: prod
+
+image:
+  repository: acrhblmgmtsharedcac01.azurecr.io/insurance/claims-worker
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  tag: "0.1.0"
+
+workloadIdentity:
+  enabled: true
+  clientId: 00000000-0000-0000-0000-000000003a02   # id-ins-claims-worker-prod
+
+service:
+  enabled: false
+
+config:
+  DATABASE_HOST: psql-ins-prod-cac-01.postgres.database.azure.com
+  DATABASE_NAME: insurance
+  DATABASE_USER: id-ins-claims-worker-prod
+  SERVICEBUS_FQDN: sbns-ins-prod-cac-01.servicebus.windows.net
+  SERVICEBUS_TOPIC: claims
+  SERVICEBUS_SUBSCRIPTION: triage
+  MAX_CONCURRENCY: "8"
+  LOG_LEVEL: INFO
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+
+keda:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 30
+  identityClientId: 00000000-0000-0000-0000-000000003a04   # id-ins-keda-scaler-prod (federated to kube-system/keda-operator)
+  serviceBus:
+    namespace: sbns-ins-prod-cac-01
+    topicName: claims
+    subscriptionName: triage
+    messageCount: "20"
+
+topologySpread:
+  zoneWhenUnsatisfiable: DoNotSchedule
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+networkPolicy:
+  enabled: true
+  allowFromIngressController: false
+  egress:
+    privateEndpoints:
+      - cidr: 10.30.9.0/24
+        ports: [5432, 5671, 443]
+
+observability:
+  otel:
+    samplerArg: "0.2"

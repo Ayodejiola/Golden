@@ -1,0 +1,13 @@
+%% Source of truth: docs/architecture/gitops-and-delivery.md (keep in sync; `make diagrams` renders SVG)
+flowchart LR
+  dev([Engineer]) -->|PR| gh[GitHub]
+  gh -->|pull_request| ci[CI: lint · tests · CodeQL ·<br/>Trivy · gitleaks · dep review]
+  gh -->|merge to main| build[Trusted builder<br/>_container-build.yml]
+  build -->|push by digest| acr[(ACR)]
+  build -->|cosign sign + SLSA + SBOM| rekor[(Rekor)]
+  build -->|PR: digest → dev values| repo[(gitops/)]
+  repo -->|auto-merge dev| argo_dev[Argo CD dev]
+  promote[promote.yml<br/>verify signature + provenance] -->|PR: same digest → stg/prod| repo
+  repo --> argo_stg[Argo CD stg] & argo_prod[Argo CD prod]
+  argo_prod -->|sync windows, PreSync migrations| aks[(AKS prod)]
+  aks -->|Kyverno verifyImages| acr

@@ -1,0 +1,111 @@
+# Team structure. Users are synced from Microsoft Entra ID (microsoftGraphOrg provider); groups below are the
+# canonical owners referenced by CODEOWNERS, catalog entities, Kubernetes RBAC and Argo CD projects.
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: harborline-technology
+  title: Harborline Technology
+spec:
+  type: organization
+  children: [platform-engineering, security-architecture, sre, platform-product, devsecops, cloud-architecture, network-engineering, insurance-digital]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-engineering
+  title: Platform Engineering
+  description: Builds and runs the Internal Developer Platform.
+  annotations:
+    graph.microsoft.com/group-id: 00000000-0000-0000-0000-00000000a001
+spec:
+  type: team
+  profile: { email: platform-engineering@harborline.example }
+  parent: harborline-technology
+  children: [aks-sme]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: aks-sme
+  title: AKS Subject Matter Experts
+spec:
+  type: guild
+  parent: platform-engineering
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: security-architecture
+  title: Security Architecture
+  description: Owns platform policies, threat models and security standards.
+spec:
+  type: team
+  profile: { email: security-architecture@harborline.example }
+  parent: harborline-technology
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: sre
+  title: Site Reliability Engineering
+spec:
+  type: team
+  profile: { email: sre@harborline.example }
+  parent: harborline-technology
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: platform-product
+  title: Platform Product Management
+spec:
+  type: team
+  parent: harborline-technology
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: devsecops
+  title: DevSecOps
+spec:
+  type: team
+  parent: harborline-technology
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: cloud-architecture
+  title: Cloud Architecture
+spec:
+  type: team
+  parent: harborline-technology
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: network-engineering
+  title: Network Engineering
+spec:
+  type: team
+  parent: harborline-technology
+  children: []
+---
+apiVersion: backstage.io/v1alpha1
+kind: Group
+metadata:
+  name: insurance-digital
+  title: Insurance Digital
+  description: Builds the customer and broker policy portal.
+  annotations:
+    graph.microsoft.com/group-id: 00000000-0000-0000-0000-00000000b001
+spec:
+  type: team
+  profile: { email: insurance-digital@harborline.example }
+  parent: harborline-technology
+  children: []

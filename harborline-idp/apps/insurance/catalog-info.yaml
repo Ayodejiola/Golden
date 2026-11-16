@@ -1,0 +1,77 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: policy-api
+  title: Policy API
+  description: Quotes, policy binding and first notice of loss for the Harborline Policy Portal.
+  annotations:
+    backstage.io/techdocs-ref: dir:../..
+    github.com/project-slug: harborline/harborline-idp
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=policy-api
+    argocd/app-selector: harborline.io/team=insurance
+    harborline.io/slo: availability 99.9% / p99 < 500ms
+    harborline.io/runbook: https://backstage.harborline.example/docs/default/component/harborline-idp/operations/runbooks/high-error-rate/
+  tags: [python, fastapi, restricted-data]
+  links:
+    - url: https://portal.harborline.example
+      title: Portal (prod)
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/insurance-digital
+  system: policy-portal
+  providesApis: [policy-api]
+  dependsOn:
+    - resource:default/psql-ins
+    - resource:default/sbns-ins
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: claims-worker
+  title: Claims triage worker
+  description: Consumes claim.submitted events and routes claims to fast-track, adjuster or SIU.
+  annotations:
+    github.com/project-slug: harborline/harborline-idp
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=claims-worker
+    harborline.io/runbook: https://backstage.harborline.example/docs/default/component/harborline-idp/operations/runbooks/servicebus-dead-letter/
+  tags: [python, service-bus, keda]
+spec:
+  type: service
+  lifecycle: production
+  owner: group:default/insurance-digital
+  system: policy-portal
+  dependsOn:
+    - resource:default/psql-ins
+    - resource:default/sbns-ins
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: policy-portal-web
+  title: Policy Portal web
+  description: React single-page application for customers and brokers.
+  annotations:
+    github.com/project-slug: harborline/harborline-idp
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=web
+  tags: [react, typescript]
+spec:
+  type: website
+  lifecycle: production
+  owner: group:default/insurance-digital
+  system: policy-portal
+  consumesApis: [policy-api]
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: policy-api
+  title: Policy API v1
+  description: REST API for quotes, policies and claims.
+spec:
+  type: openapi
+  lifecycle: production
+  owner: group:default/insurance-digital
+  system: policy-portal
+  definition:
+    $text: ./policy-api/openapi.yaml

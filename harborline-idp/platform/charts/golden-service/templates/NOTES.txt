@@ -1,0 +1,12 @@
+{{ include "gs.fullname" . }} ({{ .Values.environment }}) deployed by the Harborline golden-service chart {{ .Chart.Version }}.
+
+  Owner:        {{ .Values.team }} / {{ .Values.system }}
+  Image:        {{ include "gs.image" . }}
+  Identity:     {{ if .Values.workloadIdentity.enabled }}workload identity {{ .Values.workloadIdentity.clientId }}{{ else }}none{{ end }}
+  Scaling:      {{ if .Values.keda.enabled }}KEDA {{ .Values.keda.minReplicas }}-{{ .Values.keda.maxReplicas }}{{ else if .Values.autoscaling.enabled }}HPA {{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }}{{ else }}{{ .Values.replicaCount }} replicas{{ end }}
+{{- if .Values.ingress.enabled }}
+  URL:          https://{{ .Values.ingress.host }}
+{{- end }}
+
+Dashboards: Grafana → "Harborline / Service golden signals" (service_name={{ include "gs.fullname" . }})
+Docs:       https://backstage.harborline.example/catalog/default/component/{{ include "gs.component" . }}

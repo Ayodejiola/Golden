@@ -1,0 +1,2 @@
+# Trivy waivers. Each entry MUST reference a risk acceptance (RA-####) with an expiry date, e.g.:
+# CVE-2099-0001 exp:2026-12-31  # RA-0042 not reachable: library loaded but vulnerable function unused

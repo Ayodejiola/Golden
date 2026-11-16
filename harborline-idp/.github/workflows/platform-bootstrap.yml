@@ -1,0 +1,38 @@
+# One-time (or disaster-recovery) Argo CD bootstrap of a cluster. Runs on the environment's VNet-injected runner
+# because the AKS API server is private. Gated by the environment's required reviewers.
+name: platform-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        type: choice
+        options: [dev, stg, prod]
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: { group: "harborline-${{ inputs.env }}" }
+    environment: ${{ inputs.env }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-helm@v4
+      - uses: azure/use-kubelogin@v1
+        with:
+          kubelogin-version: v0.1.6
+      - run: scripts/bootstrap-argocd.sh "${{ inputs.env }}"

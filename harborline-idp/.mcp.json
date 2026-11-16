@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "platform-catalog": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["ai/mcp-servers/platform-catalog/server.py", "--repo-root", "."],
+      "env": {}
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_MCP_TOKEN}",
+        "X-MCP-Toolsets": "repos,issues,pull_requests,actions,code_security",
+        "X-MCP-Readonly": "false"
+      }
+    },
+    "azure": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@azure/mcp@latest", "server", "start", "--read-only"],
+      "env": {
+        "AZURE_MCP_COLLECT_TELEMETRY": "false"
+      }
+    },
+    "terraform": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "--read-only", "--network", "bridge", "hashicorp/terraform-mcp-server:0.2"]
+    }
+  }
+}

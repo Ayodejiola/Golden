@@ -1,0 +1,11 @@
+%% Source of truth: docs/architecture/observability.md (keep in sync; `make diagrams` renders SVG)
+flowchart LR
+  app[Service<br/>OTel SDK] -->|OTLP gRPC :4317| col[OTel Collector<br/>observability ns]
+  col -->|traces, logs<br/>azuremonitor exporter| appi[(Application Insights)]
+  col -->|metrics<br/>:8889 Prometheus| ama[ama-metrics] --> amw[(Azure Monitor workspace)]
+  k8s[kubelet, cAdvisor, KSM] --> ama
+  ci[Container Insights<br/>ContainerLogV2] --> law[(Log Analytics)]
+  appi --> law
+  amw --> graf[Managed Grafana]
+  law --> graf
+  amw -->|rule groups| alerts[Prometheus alerts] --> ag[Action group → on-call]

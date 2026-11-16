@@ -1,0 +1,54 @@
+# One Application per workload: gitops/workloads/prod/<team>/<app>/{config,values}.yaml.
+# Every workload renders the golden-service chart at the platform-pinned revision.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: workloads
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/harborline/harborline-idp.git
+        revision: main
+        files:
+          - path: gitops/workloads/prod/*/*/config.yaml
+  template:
+    metadata:
+      name: "{{.team}}-{{.app}}"
+      labels:
+        harborline.io/layer: workloads
+        harborline.io/team: "{{.team}}"
+      annotations:
+        notifications.argoproj.io/subscribe.on-sync-failed.teams: "{{.team}}"
+        notifications.argoproj.io/subscribe.on-health-degraded.teams: "{{.team}}"
+    spec:
+      project: "{{.project}}"
+      sources:
+        - repoURL: https://github.com/harborline/harborline-idp.git
+          targetRevision: "{{.chartRevision}}"
+          path: platform/charts/golden-service
+          helm:
+            releaseName: "{{.app}}"
+            valueFiles:
+              - $values/{{.path.path}}/values.yaml
+        - repoURL: https://github.com/harborline/harborline-idp.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
+          - PruneLast=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 20s
+            factor: 2
+            maxDuration: 3m

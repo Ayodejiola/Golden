@@ -1,0 +1,73 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: harborline-idp
+  title: Harborline IDP (this repository)
+  description: Terraform, GitOps, policies, pipelines, portal and documentation for the platform.
+  annotations:
+    backstage.io/techdocs-ref: dir:../..
+    github.com/project-slug: harborline/harborline-idp
+spec:
+  type: platform
+  lifecycle: production
+  owner: group:default/platform-engineering
+  system: harborline-idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: golden-service-chart
+  title: golden-service Helm chart
+  description: The secure-by-default deployment contract for every service.
+  annotations:
+    github.com/project-slug: harborline/harborline-idp
+  tags: [helm, golden-path]
+spec:
+  type: library
+  lifecycle: production
+  owner: group:default/platform-engineering
+  system: harborline-idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: platform-policies
+  title: Platform admission policies (Kyverno)
+  annotations:
+    github.com/project-slug: harborline/harborline-idp
+  tags: [kyverno, security]
+spec:
+  type: library
+  lifecycle: production
+  owner: group:default/security-architecture
+  system: harborline-idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: platform-catalog-mcp
+  title: Platform catalog MCP server
+  description: Read-only MCP server giving AI assistants grounded platform context (ADR-0014).
+  annotations:
+    github.com/project-slug: harborline/harborline-idp
+  tags: [ai, mcp]
+spec:
+  type: tool
+  lifecycle: production
+  owner: group:default/platform-engineering
+  system: harborline-idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: developer-portal
+  title: Developer portal (Backstage)
+  annotations:
+    github.com/project-slug: harborline/harborline-idp
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=backstage
+spec:
+  type: website
+  lifecycle: production
+  owner: group:default/platform-product
+  system: harborline-idp
+  dependsOn: [resource:default/aks-plat-prod]

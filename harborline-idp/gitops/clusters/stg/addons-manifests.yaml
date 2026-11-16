@@ -1,0 +1,44 @@
+# Plain-manifest add-ons for stg: Kyverno policies and env-specific platform config.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: addons-manifests
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: kyverno-policies
+            path: platform/policies/kyverno
+            namespace: kyverno
+          - name: platform-config
+            path: gitops/addons/platform-config/overlays/stg
+            namespace: argocd
+  template:
+    metadata:
+      name: "addon-{{.name}}"
+      labels:
+        harborline.io/layer: addons
+    spec:
+      project: platform
+      source:
+        repoURL: https://github.com/harborline/harborline-idp.git
+        targetRevision: main
+        path: "{{.path}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 10m

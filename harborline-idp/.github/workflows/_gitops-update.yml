@@ -1,0 +1,86 @@
+# Bumps image.digest in a GitOps values file through a pull request (auto-merge for dev, reviewed for stg/prod).
+# Uses a GitHub App token so the PR triggers required checks; the bot cannot bypass branch protection.
+name: _gitops-update
+
+on:
+  workflow_call:
+    inputs:
+      values-file:
+        type: string
+        required: true
+      digest:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      auto-merge:
+        type: boolean
+        default: false
+      title:
+        type: string
+        required: true
+    secrets:
+      GITOPS_APP_ID:
+        required: true
+      GITOPS_APP_PRIVATE_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          repositories: harborline-idp
+
+      - uses: actions/checkout@v4
+        with:
+          repository: harborline/harborline-idp
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Validate inputs
+        env:
+          DIGEST: ${{ inputs.digest }}
+          FILE: ${{ inputs.values-file }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "invalid digest"; exit 1; }
+          [[ "$FILE" =~ ^gitops/workloads/(dev|stg|prod)/[a-z0-9-]+/[a-z0-9-]+/values\.yaml$ ]] || { echo "invalid path"; exit 1; }
+
+      - name: Bump digest
+        env:
+          DIGEST: ${{ inputs.digest }}
+          VERSION: ${{ inputs.version }}
+          FILE: ${{ inputs.values-file }}
+        run: |
+          yq -i '.image.digest = strenv(DIGEST) | .image.tag = strenv(VERSION)' "$FILE"
+          git diff --stat
+
+      - uses: peter-evans/create-pull-request@v7
+        id: pr
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: gitops/${{ hashFiles(inputs.values-file) }}-${{ github.run_id }}
+          commit-message: "chore(deploy): ${{ inputs.title }}"
+          title: "deploy: ${{ inputs.title }}"
+          body: |
+            Automated GitOps update from ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            - File: `${{ inputs.values-file }}`
+            - Digest: `${{ inputs.digest }}` (signed + attested by `_container-build.yml`)
+            - Version: `${{ inputs.version }}`
+          labels: deploy, automated
+          delete-branch: true
+
+      - name: Enable auto-merge (dev only)
+        if: inputs.auto-merge && steps.pr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: gh pr merge "${{ steps.pr.outputs.pull-request-number }}" --auto --squash --repo harborline/harborline-idp

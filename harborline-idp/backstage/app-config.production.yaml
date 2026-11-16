@@ -1,0 +1,107 @@
+# Production configuration (prod platform cluster, namespace backstage). Values in ${...} come from environment
+# variables injected from Key Vault (SecretProviderClass "backstage") or set in gitops/addons/backstage/values.yaml.
+app:
+  baseUrl: https://backstage.harborline.example
+
+backend:
+  baseUrl: https://backstage.harborline.example
+  listen:
+    port: 7007
+  trustProxy: true
+  cors:
+    origin: https://backstage.harborline.example
+  database:
+    client: pg
+    connection:
+      host: ${POSTGRES_HOST}
+      port: ${POSTGRES_PORT}
+      user: ${POSTGRES_USER}
+      password: ${POSTGRES_PASSWORD}   # EXC-0001 (see docs/governance/exceptions-process.md)
+      ssl:
+        rejectUnauthorized: true
+  auth:
+    keys:
+      - secret: ${BACKEND_SECRET}
+
+integrations:
+  github:
+    - host: github.com
+      apps:
+        - appId: ${GITHUB_APP_ID}
+          clientId: ${GITHUB_APP_CLIENT_ID}
+          clientSecret: ${GITHUB_APP_CLIENT_SECRET}
+          privateKey: ${GITHUB_APP_PRIVATE_KEY}
+          webhookSecret: ${GITHUB_APP_WEBHOOK_SECRET}
+          allowedInstallationOwners: [harborline]
+
+auth:
+  environment: production
+  session:
+    secret: ${BACKEND_SECRET}
+  providers:
+    microsoft:
+      production:
+        clientId: ${AZURE_CLIENT_ID_PORTAL}
+        clientSecret: ${AUTH_MICROSOFT_CLIENT_SECRET}
+        tenantId: ${AZURE_TENANT_ID}
+        domainHint: ${AZURE_TENANT_ID}
+        signIn:
+          resolvers:
+            - resolver: userIdMatchingUserEntityAnnotation
+            - resolver: emailMatchingUserEntityAnnotation
+
+catalog:
+  orphanStrategy: delete
+  processingInterval: { minutes: 5 }
+  locations:
+    - type: url
+      target: https://github.com/harborline/harborline-idp/blob/main/catalog-info.yaml
+  providers:
+    github:
+      harborline:
+        organization: harborline
+        catalogPath: /catalog-info.yaml
+        filters:
+          branch: main
+          repository: ".*"
+          visibility: [private, internal]
+        schedule:
+          frequency: { minutes: 30 }
+          timeout: { minutes: 3 }
+    microsoftGraphOrg:
+      harborline:
+        target: https://graph.microsoft.com/v1.0
+        tenantId: ${AZURE_TENANT_ID}
+        clientId: ${AZURE_CLIENT_ID_GRAPH}
+        clientSecret: ${AUTH_MICROSOFT_CLIENT_SECRET}
+        user:
+          filter: accountEnabled eq true and userType eq 'Member'
+        group:
+          filter: startswith(displayName, 'grp-eng-')
+        schedule:
+          frequency: { hours: 1 }
+          timeout: { minutes: 10 }
+
+kubernetes:
+  serviceLocatorMethod:
+    type: multiTenant
+  clusterLocatorMethods:
+    - type: config
+      clusters:
+        # Private API servers; reachable from the prod spoke through the hub firewall (east-west rule).
+        # Backstage authenticates with its workload identity, which holds AKS RBAC Reader on each cluster.
+        - name: aks-plat-dev-cac-01
+          url: https://aks-plat-dev-cac-01.privatelink.canadacentral.azmk8s.io:443
+          authProvider: azure
+          skipMetricsLookup: false
+        - name: aks-plat-stg-cac-01
+          url: https://aks-plat-stg-cac-01.privatelink.canadacentral.azmk8s.io:443
+          authProvider: azure
+        - name: aks-plat-prod-cac-01
+          url: https://aks-plat-prod-cac-01.privatelink.canadacentral.azmk8s.io:443
+          authProvider: azure
+
+search:
+  pg:
+    highlightOptions:
+      useHighlight: true

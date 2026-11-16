@@ -1,0 +1,42 @@
+{{- if .Values.keda.enabled }}
+{{- $sb := .Values.keda.serviceBus }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "gs.fullname" . }}-azure-wi
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gs.labels" . | nindent 4 }}
+spec:
+  podIdentity:
+    provider: azure-workload
+    identityId: {{ required "keda.identityClientId is required" .Values.keda.identityClientId | quote }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "gs.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gs.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "gs.fullname" . }}
+  minReplicaCount: {{ .Values.keda.minReplicas }}
+  maxReplicaCount: {{ .Values.keda.maxReplicas }}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  triggers:
+    - type: azure-servicebus
+      authenticationRef:
+        name: {{ include "gs.fullname" . }}-azure-wi
+      metadata:
+        namespace: {{ required "keda.serviceBus.namespace is required" $sb.namespace | quote }}
+        {{- if $sb.queueName }}
+        queueName: {{ $sb.queueName | quote }}
+        {{- else }}
+        topicName: {{ required "keda.serviceBus.topicName is required" $sb.topicName | quote }}
+        subscriptionName: {{ required "keda.serviceBus.subscriptionName is required" $sb.subscriptionName | quote }}
+        {{- end }}
+        messageCount: {{ $sb.messageCount | quote }}
+{{- end }}

@@ -1,0 +1,16 @@
+%% Source of truth: docs/architecture/data-and-messaging.md (keep in sync; `make diagrams` renders SVG)
+sequenceDiagram
+  participant API as policy-api
+  participant DB as PostgreSQL
+  participant R as Outbox relay (in API pods)
+  participant SB as Service Bus
+  participant W as claims-worker
+  API->>DB: BEGIN · INSERT claim + outbox · COMMIT
+  loop every 2s
+    R->>DB: SELECT … FOR UPDATE SKIP LOCKED
+    R->>SB: send batch (message_id = deterministic)
+    R->>DB: UPDATE outbox SET published_at
+  end
+  SB->>W: deliver (peek-lock)
+  W->>DB: BEGIN · INSERT processed_messages (on conflict skip) · UPDATE claim · COMMIT
+  W->>SB: complete / dead-letter / abandon

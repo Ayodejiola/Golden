@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Platform add-ons, policies, tenants and Argo CD itself. Platform Engineering only.
+  sourceRepos:
+    - https://github.com/harborline/harborline-idp.git
+    - acrhblmgmtsharedcac01.azurecr.io/helm
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  orphanedResources:
+    warn: true
+  roles:
+    - name: admin
+      description: Platform administrators
+      policies:
+        - p, proj:platform:admin, applications, *, platform/*, allow
+      groups:
+        - 00000000-0000-0000-0000-00000000a001

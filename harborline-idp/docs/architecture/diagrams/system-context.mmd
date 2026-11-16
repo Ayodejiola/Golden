@@ -1,0 +1,22 @@
+%% Source of truth: docs/architecture/overview.md (keep in sync; `make diagrams` renders SVG)
+flowchart TB
+  subgraph people[People]
+    devs([Product engineers])
+    plat([Platform / SRE / Security])
+    cust([Customers & brokers])
+  end
+  idp[[Harborline IDP<br/>golden paths, runtime, guardrails]]
+  gh[(GitHub Enterprise<br/>code, Actions, OIDC)]
+  entra[(Microsoft Entra ID<br/>workforce + workload identity)]
+  azure[(Azure<br/>Canada Central / Canada East)]
+  sig[(Sigstore<br/>Fulcio + Rekor)]
+  llm[(Claude<br/>via Claude Code)]
+  devs -->|scaffold, deploy, observe| idp
+  plat -->|operate, govern| idp
+  cust -->|HTTPS| idp
+  idp --> gh
+  idp --> entra
+  idp --> azure
+  idp --> sig
+  devs -. AI-assisted, guarded .-> llm
+  llm -. MCP, read-only .-> idp

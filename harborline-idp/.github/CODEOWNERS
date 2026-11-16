@@ -1,0 +1,34 @@
+# Default: platform engineering reviews everything not owned more specifically.
+*                                   @harborline/platform-engineering
+
+# Infrastructure
+/infra/                             @harborline/platform-engineering @harborline/cloud-architecture
+/infra/terraform/modules/aks/       @harborline/platform-engineering @harborline/aks-sme
+/infra/terraform/stacks/connectivity/ @harborline/network-engineering @harborline/cloud-architecture
+
+# Security-sensitive paths: security architecture must approve
+/platform/policies/                 @harborline/security-architecture
+/infra/terraform/modules/policy-assignments/ @harborline/security-architecture
+/.claude/                           @harborline/security-architecture @harborline/platform-engineering
+/.mcp.json                          @harborline/security-architecture
+/.github/workflows/                 @harborline/devsecops
+/.github/CODEOWNERS                 @harborline/security-architecture
+/docs/security/                     @harborline/security-architecture
+
+# GitOps
+/gitops/addons/                     @harborline/platform-engineering
+/gitops/tenants/                    @harborline/platform-engineering
+/gitops/workloads/*/insurance/      @harborline/insurance-digital
+/gitops/workloads/prod/             @harborline/platform-engineering @harborline/sre
+
+# Portal and product
+/backstage/                         @harborline/platform-product
+/docs/product/                      @harborline/platform-product
+
+# Reference app
+/apps/insurance/                    @harborline/insurance-digital
+/infra/terraform/stacks/workload-insurance/ @harborline/insurance-digital @harborline/platform-engineering
+
+# Operations
+/docs/operations/                   @harborline/sre
+/platform/observability/            @harborline/sre

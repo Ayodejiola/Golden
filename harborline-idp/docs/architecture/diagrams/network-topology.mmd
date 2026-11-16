@@ -1,0 +1,21 @@
+%% Source of truth: docs/architecture/network.md (keep in sync; `make diagrams` renders SVG)
+flowchart LR
+  internet((Internet)) -->|443| agw
+  subgraph hub[Hub 10.0.0.0/22 · connectivity]
+    fw[Azure Firewall Premium<br/>IDPS deny · TI deny · DNS proxy<br/>10.0.0.4]
+    bas[Bastion]
+    dns[(Private DNS zones)]
+    pe_shared[PE: ACR]
+  end
+  subgraph spoke[Spoke 10.x.0.0/16 · per environment]
+    agw[App Gateway WAF v2<br/>snet-agw]
+    ilb[Internal LB 10.x.10.10<br/>NGINX app routing]
+    sys[snet-aks-system /24]
+    usr[snet-aks-user /22]
+    pe[snet-pe /24<br/>KV · PG · SB]
+    run[snet-runners /24<br/>GitHub-hosted, injected]
+  end
+  agw -->|HTTPS| ilb --> usr
+  sys & usr & run -->|UDR 0.0.0.0/0| fw --> internet
+  usr --> pe
+  spoke <-->|peering| hub

@@ -1,0 +1,10 @@
+%% Source of truth: docs/ai/guardrails.md (keep in sync; `make diagrams` renders SVG)
+flowchart LR
+  dev([Engineer]) --> cc[Claude Code]
+  cc -->|1 CLAUDE.md policy| cc
+  cc -->|2 permission rules<br/>allow / ask / deny| tools
+  cc -->|3 PreToolUse hook guard.py<br/>block mutation · secrets · PII · control weakening| tools[Tools: Bash, Edit, Read, MCP]
+  tools -->|4 PostToolUse audit.py| audit[(Audit JSONL → SIEM)]
+  tools --> mcp[MCP allow-list<br/>platform-catalog RO · github · azure RO · terraform docs]
+  cc -->|5 output reviewed by human| pr[Pull request]
+  pr -->|6 CI: tests, policy, scans,<br/>advisory AI review| main[(main)]

@@ -1,0 +1,61 @@
+# Validates everything that reaches a cluster: chart lint/render for every workload, schema validation
+# (kubeconform + CRD catalog), Kyverno policy tests and a "would admission pass?" check of rendered manifests.
+name: k8s-validate
+
+on:
+  pull_request:
+    paths: [platform/**, gitops/**, .github/workflows/k8s-validate.yml]
+  push:
+    branches: [main]
+    paths: [platform/**, gitops/**]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+      - name: Install kubeconform, kyverno CLI, kustomize
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar -xz kubeconform
+          curl -sSL https://github.com/kyverno/kyverno/releases/download/v1.13.2/kyverno-cli_v1.13.2_linux_x86_64.tar.gz | tar -xz kyverno
+          curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.5.0/kustomize_v5.5.0_linux_amd64.tar.gz" | tar -xz kustomize
+          sudo mv kubeconform kyverno kustomize /usr/local/bin/
+      - name: yamllint
+        run: pipx run yamllint -c .yamllint.yaml gitops platform
+      - name: Helm lint (chart contract)
+        run: helm lint platform/charts/golden-service --strict -f platform/charts/golden-service/ci/test-values.yaml
+      - name: Render every workload
+        run: |
+          mkdir -p out
+          for f in $(find gitops/workloads -name values.yaml); do
+            name=$(echo "$f" | cut -d/ -f3-5 | tr / -)
+            helm template "$(basename "$(dirname "$f")")" platform/charts/golden-service -f "$f" --namespace insurance > "out/${name}.yaml"
+          done
+          for o in gitops/addons/platform-config/overlays/* gitops/tenants/*/overlays/* gitops/clusters/*; do
+            kustomize build "$o" > "out/kustomize-$(echo "$o" | tr / -).yaml"
+          done
+      - name: Schema validation (kubeconform)
+        run: |
+          kubeconform -strict -summary -ignore-missing-schemas -kubernetes-version 1.33.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            out/ platform/policies/kyverno/*.yaml
+      - name: Kyverno policy unit tests
+        run: kyverno test platform/policies/kyverno/tests
+      - name: Admission dry-run of rendered workloads against tenant policies
+        run: |
+          kyverno apply platform/policies/kyverno/pod-security-restricted.yaml \
+            platform/policies/kyverno/require-labels.yaml platform/policies/kyverno/require-resources-and-probes.yaml \
+            platform/policies/kyverno/tenant-boundaries.yaml \
+            --resource out/dev-insurance-*.yaml --resource out/prod-insurance-*.yaml \
+            --values-file platform/policies/kyverno/tests/values.yaml --audit-warn=false --policy-report | tee report.txt
+          ! grep -E "fail: [1-9]" report.txt

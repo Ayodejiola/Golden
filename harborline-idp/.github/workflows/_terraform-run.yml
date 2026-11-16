@@ -1,0 +1,92 @@
+# One Terraform stack × environment. plan: read-only identity, comment on PR. apply: GitHub environment gate
+# (required reviewers for stg/prod), apply-identity via OIDC, conftest on the plan before apply.
+name: _terraform-run
+
+on:
+  workflow_call:
+    inputs:
+      stack: { type: string, required: true }
+      env: { type: string, required: true }
+      mode: { type: string, required: true }   # plan | apply | drift
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: ${{ inputs.mode }} ${{ inputs.stack }}/${{ inputs.env }}
+    # Private data planes (Key Vault, ACR) are only reachable from VNet-injected runners (ADR-0013).
+    runs-on: ${{ inputs.env == 'shared' && 'ubuntu-latest' || fromJSON(format('{{"group":"harborline-{0}"}}', inputs.env)) }}
+    environment: ${{ inputs.mode == 'apply' && inputs.env || '' }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      # plan/drift use the read-only identity (repo variable); apply uses the environment's AZURE_CLIENT_ID.
+      ARM_CLIENT_ID: ${{ inputs.mode == 'apply' && vars.AZURE_CLIENT_ID || vars[format('TF_PLAN_CLIENT_ID_{0}', inputs.env)] }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.MANAGEMENT_SUBSCRIPTION_ID }}
+      TF_VAR_oncall_webhook_url: ${{ secrets.ONCALL_WEBHOOK_URL }}
+      DIR: infra/terraform/stacks/${{ inputs.stack }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - name: Init
+        run: terraform -chdir="$DIR" init -backend-config="env/${{ inputs.env }}.backend.hcl"
+      - name: Plan
+        id: plan
+        run: |
+          set +e
+          terraform -chdir="$DIR" plan -lock-timeout=5m -var-file="env/${{ inputs.env }}.tfvars" \
+            -out=tfplan -detailed-exitcode -no-color > plan.txt
+          code=$?
+          set -e
+          cat plan.txt
+          [ $code -eq 1 ] && exit 1
+          echo "changes=$([ $code -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          terraform -chdir="$DIR" show -json tfplan > plan.json
+      - name: Policy check (Conftest)
+        run: |
+          curl -sSL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz | tar -xz conftest
+          ./conftest test plan.json --policy platform/policies/conftest --no-color | tee conftest.txt
+      - name: Comment plan on PR
+        if: inputs.mode == 'plan' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          STACK: ${{ inputs.stack }}
+          ENVIRONMENT: ${{ inputs.env }}
+          CHANGES: ${{ steps.plan.outputs.changes }}
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('plan.txt', 'utf8');
+            const summary = (plan.match(/Plan: .*|No changes\..*/) || ['(see logs)'])[0];
+            const policy = fs.readFileSync('conftest.txt', 'utf8').slice(-2000);
+            const marker = `<!-- tfplan:${process.env.STACK}:${process.env.ENVIRONMENT} -->`;
+            const body = `${marker}\n### Terraform \`${process.env.STACK}\` / \`${process.env.ENVIRONMENT}\`\n` +
+              `**${summary}**\n\n<details><summary>Plan</summary>\n\n\`\`\`\n${plan.slice(-60000)}\n\`\`\`\n</details>\n\n` +
+              `<details><summary>Policy (conftest)</summary>\n\n\`\`\`\n${policy}\n\`\`\`\n</details>`;
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
+            const existing = comments.find(c => c.body.startsWith(marker));
+            if (existing) await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+      - name: Apply
+        if: inputs.mode == 'apply' && steps.plan.outputs.changes == 'true'
+        run: terraform -chdir="$DIR" apply -lock-timeout=5m -auto-approve tfplan
+      - name: Drift report
+        if: inputs.mode == 'drift' && steps.plan.outputs.changes == 'true'
+        run: |
+          echo "::warning::Drift detected in ${{ inputs.stack }}/${{ inputs.env }}"
+          { echo "## Drift: ${{ inputs.stack }}/${{ inputs.env }}"; echo '```'; tail -c 30000 plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit 3

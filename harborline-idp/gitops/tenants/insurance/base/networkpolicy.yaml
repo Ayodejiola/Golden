@@ -1,0 +1,10 @@
+# Zero-trust baseline: deny all ingress and egress. Each workload opens exactly what it needs via the
+# golden-service chart (DNS, OTel collector, its private endpoints, Entra ID, named peers).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: insurance
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]

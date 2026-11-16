@@ -1,0 +1,130 @@
+{{- if .Values.migrations.enabled }}
+{{- $name := printf "%s-migrations" (include "gs.fullname" .) | trunc 63 | trimSuffix "-" }}
+# Argo CD PreSync hook: schema migrations run (and must succeed) before the new version rolls out.
+# The ServiceAccount and NetworkPolicy are hooks too (earlier wave) because PreSync runs before normal resources.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.migrations.serviceAccountName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gs.labels" . | nindent 4 }}
+  annotations:
+    azure.workload.identity/client-id: {{ required "migrations.workloadIdentityClientId is required" .Values.migrations.workloadIdentityClientId | quote }}
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
+automountServiceAccountToken: false
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gs.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - { port: 443, protocol: TCP }
+    {{- range .Values.networkPolicy.egress.privateEndpoints }}
+    - to:
+        - ipBlock:
+            cidr: {{ .cidr }}
+      ports:
+        {{- range .ports }}
+        - { port: {{ . }}, protocol: TCP }
+        {{- end }}
+    {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - { port: 4317, protocol: TCP }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gs.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/part-of: {{ .Values.system }}
+        harborline.io/team: {{ .Values.team }}
+        harborline.io/system: {{ .Values.system }}
+        harborline.io/tier: {{ .Values.tier }}
+        harborline.io/data-classification: {{ .Values.dataClassification }}
+        harborline.io/environment: {{ .Values.environment }}
+        azure.workload.identity/use: "true"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Values.migrations.serviceAccountName }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "gs.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "gs.image" . }}
+          command:
+            {{- toYaml (required "migrations.command is required" .Values.migrations.command) | nindent 12 }}
+          env:
+            - name: APP_ENVIRONMENT
+              value: {{ .Values.environment | quote }}
+            {{- range $k, $v := .Values.config }}
+            - name: {{ $k }}
+              value: {{ $v | toString | quote }}
+            {{- end }}
+            {{- include "gs.otelEnv" . | nindent 12 }}
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            {{- include "gs.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

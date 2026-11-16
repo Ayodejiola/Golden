@@ -1,0 +1,35 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-labels
+  annotations:
+    policies.kyverno.io/title: Require ownership and governance labels
+    policies.kyverno.io/category: Governance
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Workloads must declare owner team, system, data classification and app name. Labels drive cost allocation,
+      alert routing, Backstage linkage and data-handling controls.
+    harborline.io/controls: "NIST-ID.AM-01 NIST-ID.AM-05"
+spec:
+  background: true
+  rules:
+    - name: check-labels
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        message: >-
+          Pods must carry labels app.kubernetes.io/name, harborline.io/team, harborline.io/system and
+          harborline.io/data-classification (public|internal|confidential|restricted). Use the golden-service chart.
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "?*"
+              harborline.io/team: "?*"
+              harborline.io/system: "?*"
+              harborline.io/data-classification: "public | internal | confidential | restricted"

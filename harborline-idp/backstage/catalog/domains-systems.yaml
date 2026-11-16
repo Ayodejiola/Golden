@@ -1,0 +1,37 @@
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: engineering-platform
+  title: Engineering Platform
+spec:
+  owner: group:default/platform-engineering
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: personal-lines
+  title: Personal Lines Insurance
+  description: Auto and home insurance for individuals.
+spec:
+  owner: group:default/insurance-digital
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: harborline-idp
+  title: Harborline Internal Developer Platform
+spec:
+  owner: group:default/platform-engineering
+  domain: engineering-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: policy-portal
+  title: Policy Portal
+  description: Quote, bind and FNOL for personal lines (reference golden-path application).
+  annotations:
+    harborline.io/data-classification: restricted
+spec:
+  owner: group:default/insurance-digital
+  domain: personal-lines

@@ -1,0 +1,6 @@
+%% Source of truth: docs/architecture/identity-and-access.md (keep in sync; `make diagrams` renders SVG)
+flowchart LR
+  pod[Pod<br/>sa: policy-api] -->|projected SA token<br/>aud api://AzureADTokenExchange| entra[Entra ID]
+  entra -->|federated credential:<br/>issuer = AKS OIDC, subject = system:serviceaccount:insurance:policy-api| uami[UAMI id-ins-policy-api-env]
+  uami -->|Azure Service Bus Data Sender<br/>scope: topic claims| sb[[Service Bus]]
+  uami -->|Entra principal in PostgreSQL<br/>GRANT SELECT/INSERT/UPDATE| pg[(PostgreSQL)]

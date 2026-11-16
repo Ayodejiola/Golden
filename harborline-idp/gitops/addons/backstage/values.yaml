@@ -1,0 +1,82 @@
+# Backstage (backstage/backstage chart) — prod platform cluster only; catalogues all environments.
+# app-config.yaml + app-config.production.yaml are baked into the image (backstage/Dockerfile).
+backstage:
+  image:
+    registry: acrhblmgmtsharedcac01.azurecr.io
+    repository: platform/backstage
+    tag: "1.0.0"   # bumped by .github/workflows/backstage.yml
+  replicas: 2
+  args: ["--config", "app-config.yaml", "--config", "app-config.production.yaml"]
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+  extraEnvVars:
+    - name: POSTGRES_HOST
+      value: psql-plat-prod-cac-01.postgres.database.azure.com
+    - name: POSTGRES_PORT
+      value: "5432"
+    - name: POSTGRES_USER
+      value: backstage_admin
+    - name: AZURE_TENANT_ID
+      value: 00000000-0000-0000-0000-000000000000
+    - name: AZURE_CLIENT_ID_PORTAL
+      value: 00000000-0000-0000-0000-0000000f0010   # Entra app registration: Backstage sign-in
+    - name: AZURE_CLIENT_ID_GRAPH
+      value: 00000000-0000-0000-0000-0000000f0010   # same app, Graph User.Read.All + GroupMember.Read.All
+    - name: GITHUB_APP_ID
+      value: "000000"
+    - name: GITHUB_APP_CLIENT_ID
+      value: Iv1.0000000000000000
+  extraEnvVarsSecrets:
+    - backstage-secrets   # synced by the CSI driver from Key Vault (SecretProviderClass "backstage")
+  extraVolumes:
+    - name: tmp
+      emptyDir: {}
+    - name: secrets
+      csi:
+        driver: secrets-store.csi.k8s.io
+        readOnly: true
+        volumeAttributes:
+          secretProviderClass: backstage
+  extraVolumeMounts:
+    - name: tmp
+      mountPath: /tmp
+    - name: secrets
+      mountPath: /mnt/secrets
+      readOnly: true
+  podLabels:
+    azure.workload.identity/use: "true"
+
+serviceAccount:
+  create: true
+  name: backstage
+  annotations:
+    azure.workload.identity/client-id: 00000000-0000-0000-0000-0000000f0003   # id-plat-backstage-prod
+
+ingress:
+  enabled: true
+  className: nginx-internal
+  host: backstage.harborline.example
+  annotations:
+    kubernetes.azure.com/tls-cert-keyvault-uri: https://kv-hbl-plat-prod-cac01.vault.azure.net/certificates/wildcard-internal
+  tls:
+    enabled: true
+    secretName: keyvault-backstage
+
+postgresql:
+  enabled: false
+
+metrics:
+  serviceMonitor:
+    enabled: false

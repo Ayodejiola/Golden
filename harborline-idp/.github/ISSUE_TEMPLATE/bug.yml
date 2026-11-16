@@ -1,0 +1,26 @@
+name: Platform bug
+description: Something on the platform is broken or behaves unexpectedly
+labels: [bug, triage]
+body:
+  - type: dropdown
+    id: env
+    attributes:
+      label: Environment
+      options: [dev, stg, prod, local]
+    validations: { required: true }
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options: [AKS, Argo CD, Terraform module, golden-service chart, Kyverno policy, Pipeline, Backstage, Observability, Other]
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened vs what you expected
+      description: Include error messages (no secrets, no customer data).
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce

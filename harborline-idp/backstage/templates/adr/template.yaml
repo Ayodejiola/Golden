@@ -1,0 +1,57 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: architecture-decision-record
+  title: Architecture Decision Record (ADR)
+  description: Propose a decision using the Harborline ADR format; opens a PR against docs/adr for review.
+  tags: [architecture, governance, docs]
+spec:
+  owner: group:default/cloud-architecture
+  type: documentation
+  parameters:
+    - title: Decision
+      required: [number, title, author, context]
+      properties:
+        number:
+          title: ADR number (next free number in docs/adr/index.md)
+          type: string
+          pattern: "^[0-9]{4}$"
+        title:
+          title: Title (imperative, e.g. "Use KEDA for event-driven scaling")
+          type: string
+          maxLength: 90
+        author:
+          title: Author
+          type: string
+          ui:field: OwnerPicker
+          ui:options:
+            catalogFilter:
+              kind: [User, Group]
+        context:
+          title: Context — what forces are at play?
+          type: string
+          ui:widget: textarea
+  steps:
+    - id: render
+      action: fetch:template
+      input:
+        url: ./skeleton
+        targetPath: ./repo/docs/adr
+        values:
+          number: ${{ parameters.number }}
+          title: ${{ parameters.title }}
+          slug: ${{ parameters.title | lower | replace(" ", "-") | replace("/", "-") }}
+          author: ${{ parameters.author }}
+          context: ${{ parameters.context }}
+    - id: pr
+      action: publish:github:pull-request
+      input:
+        repoUrl: github.com?owner=harborline&repo=harborline-idp
+        sourcePath: ./repo
+        branchName: adr-${{ parameters.number }}
+        title: "docs(adr): ADR-${{ parameters.number }} ${{ parameters.title }}"
+        description: Proposed ADR. Remember to add it to docs/adr/index.md and mkdocs.yml in this PR.
+  output:
+    links:
+      - title: Pull request
+        url: ${{ steps.pr.output.remoteUrl }}

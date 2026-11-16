@@ -1,0 +1,5 @@
+admissionController:
+  replicas: 3
+  serviceAccount:
+    annotations:
+      azure.workload.identity/client-id: 00000000-0000-0000-0000-0000000b0003   # id-plat-kyverno-prod (AcrPull)

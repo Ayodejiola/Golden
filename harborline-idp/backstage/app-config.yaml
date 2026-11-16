@@ -1,0 +1,66 @@
+# Base configuration (local development). Production overrides: app-config.production.yaml.
+app:
+  title: Harborline Developer Portal
+  baseUrl: http://localhost:3000
+  packages: all   # new frontend system: discover plugins from package.json
+
+organization:
+  name: Harborline Insurance
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  csp:
+    connect-src: ["'self'", "http:", "https:"]
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
+    credentials: true
+  database:
+    client: better-sqlite3
+    connection: ":memory:"
+  auth:
+    externalAccess: []
+
+integrations:
+  github:
+    - host: github.com
+      token: ${GITHUB_TOKEN}   # local only: a fine-grained PAT with read access; production uses a GitHub App
+
+auth:
+  environment: development
+  providers:
+    guest: {}   # local only; removed in production
+
+techdocs:
+  builder: local
+  generator:
+    runIn: local
+  publisher:
+    type: local
+
+scaffolder:
+  defaultAuthor:
+    name: Harborline Backstage
+    email: backstage@harborline.example
+  defaultCommitMessage: "feat: scaffolded from a Harborline golden path template"
+
+catalog:
+  rules:
+    - allow: [Component, System, API, Resource, Location, Domain, Group, User, Template]
+  locations:
+    - type: file
+      target: ../../catalog-info.yaml
+      rules:
+        - allow: [Component, System, API, Resource, Location, Domain, Group, User, Template]
+
+permission:
+  enabled: true
+
+kubernetes:
+  serviceLocatorMethod:
+    type: multiTenant
+  clusterLocatorMethods:
+    - type: config
+      clusters: []

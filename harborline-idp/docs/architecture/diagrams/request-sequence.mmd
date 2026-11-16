@@ -1,0 +1,23 @@
+%% Source of truth: docs/architecture/overview.md (keep in sync; `make diagrams` renders SVG)
+sequenceDiagram
+  autonumber
+  actor U as Customer
+  participant W as App Gateway WAF
+  participant N as NGINX (internal)
+  participant API as policy-api
+  participant E as Entra ID
+  participant DB as PostgreSQL
+  participant SB as Service Bus
+  participant WK as claims-worker
+  U->>E: Sign in (auth code + PKCE)
+  U->>W: POST /api/v1/claims (Bearer)
+  W->>W: DRS 2.1, bot, geo, rate limit
+  W->>N: HTTPS (re-encrypted)
+  N->>API: HTTP within pod network (NetworkPolicy)
+  API->>API: Validate JWT (iss, aud, tid, scp/roles)
+  API->>E: Workload identity token (DB scope)
+  API->>DB: INSERT claim + outbox (one transaction)
+  API-->>U: 201 Created
+  API->>SB: Outbox relay publishes claim.submitted
+  SB->>WK: claims/triage subscription
+  WK->>DB: Idempotent triage update

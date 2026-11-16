@@ -1,0 +1,6 @@
+# Read by the workloads ApplicationSet (gitops/clusters/stg/workloads.yaml).
+app: claims-worker
+team: insurance
+project: insurance
+namespace: insurance
+chartRevision: main   # pin to a chart tag (e.g. golden-service-1.0.0) in prod after the first release

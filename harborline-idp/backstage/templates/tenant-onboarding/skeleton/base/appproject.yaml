@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ${{ values.team }}
+  namespace: argocd
+spec:
+  description: ${{ values.team }} workloads
+  sourceRepos:
+    - https://github.com/harborline/harborline-idp.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: ${{ values.team }}
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    - { group: "", kind: ResourceQuota }
+    - { group: "", kind: LimitRange }
+    - { group: rbac.authorization.k8s.io, kind: Role }
+    - { group: rbac.authorization.k8s.io, kind: RoleBinding }
+  roles:
+    - name: developers
+      policies:
+        - p, proj:${{ values.team }}:developers, applications, get, ${{ values.team }}/*, allow
+        - p, proj:${{ values.team }}:developers, logs, get, ${{ values.team }}/*, allow
+      groups:
+        - ${{ values.groupId }}

@@ -1,0 +1,114 @@
+# Run: kyverno test platform/policies/kyverno/tests
+# verify-image-signatures is excluded: it needs registry and Rekor access (covered by the e2e smoke test in dev).
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: harborline-policies
+policies:
+  - ../pod-security-restricted.yaml
+  - ../require-labels.yaml
+  - ../restrict-image-registries.yaml
+  - ../require-resources-and-probes.yaml
+  - ../tenant-boundaries.yaml
+  - ../rbac-hygiene.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  # ---- compliant workload passes everything ----
+  - policy: pod-security-restricted
+    rule: restricted
+    resources: [good-pod]
+    kind: Pod
+    result: pass
+  - policy: require-labels
+    rule: check-labels
+    resources: [good-pod]
+    kind: Pod
+    result: pass
+  - policy: restrict-image-registries
+    rule: harborline-registry-only
+    resources: [good-pod]
+    kind: Pod
+    result: pass
+  - policy: restrict-image-registries
+    rule: require-digest
+    resources: [good-pod]
+    kind: Pod
+    result: pass
+  - policy: require-resources-and-probes
+    rule: requests-and-memory-limit
+    resources: [good-pod]
+    kind: Pod
+    result: pass
+  - policy: tenant-boundaries
+    rule: no-automount-token
+    resources: [good-pod]
+    kind: Pod
+    result: pass
+  - policy: require-resources-and-probes
+    rule: probes
+    resources: [good-deployment]
+    kind: Deployment
+    result: pass
+  # ---- violations are blocked ----
+  - policy: pod-security-restricted
+    rule: restricted
+    resources: [privileged-pod]
+    kind: Pod
+    result: fail
+  - policy: require-labels
+    rule: check-labels
+    resources: [unlabelled-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    rule: harborline-registry-only
+    resources: [dockerhub-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    rule: require-digest
+    resources: [tag-pod]
+    kind: Pod
+    result: fail
+  - policy: require-resources-and-probes
+    rule: requests-and-memory-limit
+    resources: [no-resources-pod]
+    kind: Pod
+    result: fail
+  - policy: require-resources-and-probes
+    rule: probes
+    resources: [no-probes-deployment]
+    kind: Deployment
+    result: fail
+  - policy: tenant-boundaries
+    rule: no-public-services
+    resources: [public-lb]
+    kind: Service
+    result: fail
+  - policy: tenant-boundaries
+    rule: internal-ingress-class-only
+    resources: [public-ingress]
+    kind: Ingress
+    result: fail
+  - policy: tenant-boundaries
+    rule: no-nginx-snippets
+    resources: [snippet-ingress]
+    kind: Ingress
+    result: fail
+  - policy: tenant-boundaries
+    rule: no-default-namespace
+    resources: [default-ns-pod]
+    kind: Pod
+    result: fail
+  - policy: rbac-hygiene
+    rule: no-wildcards-in-tenant-roles
+    resources: [wildcard-role]
+    kind: Role
+    result: fail
+  - policy: rbac-hygiene
+    rule: no-cluster-admin-binding-in-tenants
+    resources: [cluster-admin-binding]
+    kind: RoleBinding
+    result: fail

@@ -1,0 +1,9 @@
+default: true
+MD013: false        # line length: prose wraps at 120 by convention, tables may exceed
+MD024:
+  siblings_only: true
+MD033: false        # inline HTML allowed (diagrams, <br/>)
+MD041: false        # front-matter files (slash commands, agents) start without H1
+MD046:
+  style: fenced
+MD060: false        # compact table delimiter rows (|---|) are the house style

@@ -1,0 +1,47 @@
+# Builds the Backstage portal image with the same trusted builder as every service, then bumps the add-on tag.
+name: backstage
+
+on:
+  pull_request:
+    paths: [backstage/**, .github/workflows/backstage.yml]
+  push:
+    branches: [main]
+    paths: [backstage/**]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backstage
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable && yarn install --immutable
+      - run: yarn tsc
+      - run: yarn backstage-cli repo lint
+      - name: Validate catalog and templates
+        run: npx --yes @roadiehq/backstage-entity-validator@0.5 ../catalog-info.yaml catalog/*.yaml templates/*/template.yaml ../apps/insurance/catalog-info.yaml
+
+  image:
+    needs: validate
+    uses: ./.github/workflows/_container-build.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: read
+      security-events: write
+    with:
+      image: platform/backstage
+      context: backstage
+      version: 1.0.${{ github.run_number }}
+      push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}

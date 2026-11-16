@@ -1,0 +1,18 @@
+# Checkov runs on every Terraform PR. Skips must reference an ADR or exception ID.
+framework:
+  - terraform
+  - kubernetes
+  - helm
+  - github_actions
+  - dockerfile
+compact: true
+quiet: true
+soft-fail: false
+download-external-modules: false
+skip-check:
+  # CKV_AZURE_4: AKS logging via omsagent — implemented via oms_agent + diagnostic settings in modules/aks (false positive on dynamic blocks)
+  - CKV_AZURE_4
+  # CKV2_AZURE_29: AKS Azure CNI — we use Azure CNI Overlay powered by Cilium (ADR-0006); rule predates overlay mode
+  - CKV2_AZURE_29
+  # CKV_AZURE_168: max pods >= 50 — set per pool via variable (default 110 in overlay); rule cannot read variables
+  - CKV_AZURE_168

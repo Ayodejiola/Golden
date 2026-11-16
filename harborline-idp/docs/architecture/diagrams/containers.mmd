@@ -1,0 +1,38 @@
+%% Source of truth: docs/architecture/overview.md (keep in sync; `make diagrams` renders SVG)
+flowchart LR
+  subgraph dx[Developer experience]
+    bs[Backstage portal<br/>catalog · templates · TechDocs]
+    mcp[platform-catalog MCP]
+    cc[Claude Code<br/>hooks + permissions]
+  end
+  subgraph delivery[Delivery]
+    gha[GitHub Actions<br/>trusted builder]
+    acr[(ACR Premium)]
+    repo[(harborline-idp<br/>gitops/)]
+    argo[Argo CD<br/>per cluster]
+  end
+  subgraph runtime[Runtime - per environment spoke]
+    agw[App Gateway WAF v2]
+    nginx[Internal NGINX<br/>app routing]
+    aks[AKS private<br/>Cilium · WI · Kyverno]
+    pg[(PostgreSQL Flexible)]
+    sb[[Service Bus Premium]]
+    kv[(Key Vault)]
+  end
+  subgraph obs[Observability - management]
+    otel[OTel Collector]
+    ai[(Application Insights)]
+    prom[(Managed Prometheus)]
+    graf[Managed Grafana]
+  end
+  bs -->|PRs| repo
+  gha -->|signed images| acr
+  gha -->|digest PRs| repo
+  argo -->|pull| repo
+  argo --> aks
+  aks -->|pull by digest| acr
+  agw --> nginx --> aks
+  aks --> pg & sb & kv
+  aks --> otel --> ai
+  otel --> prom --> graf
+  cc --> mcp --> repo

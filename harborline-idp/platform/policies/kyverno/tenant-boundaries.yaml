@@ -1,0 +1,96 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: tenant-boundaries
+  annotations:
+    policies.kyverno.io/title: Tenant isolation boundaries
+    policies.kyverno.io/category: Multi-tenancy
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Tenants may not expose Services publicly (all north-south traffic enters through the WAF), must use the internal
+      ingress class without snippet annotations, must not run in the default namespace, and must not mount the
+      Kubernetes API token unless they opt in explicitly.
+    harborline.io/controls: "CIS-4.1.6 CIS-4.6.1 CIS-4.6.4 CIS-5.4.x NIST-PR.IR-01"
+spec:
+  background: true
+  rules:
+    - name: no-default-namespace
+      match:
+        any:
+          - resources:
+              kinds: [Pod, Deployment, Service, Ingress, ConfigMap, Secret]
+              namespaces: [default]
+      exclude:
+        any:
+          - resources:
+              kinds: [Service]
+              names: [kubernetes]
+          - resources:
+              kinds: [ConfigMap]
+              names: [kube-root-ca.crt]
+      validate:
+        failureAction: Enforce
+        message: "The default namespace is not for workloads. Onboard a tenant namespace via Backstage."
+        deny: {}
+    - name: no-public-services
+      match:
+        any:
+          - resources:
+              kinds: [Service]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        message: "Tenants may only create ClusterIP services; ingress goes through App Gateway WAF and the internal ingress."
+        pattern:
+          spec:
+            =(type): "ClusterIP"
+    - name: internal-ingress-class-only
+      match:
+        any:
+          - resources:
+              kinds: [Ingress]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        message: "Ingress must use ingressClassName nginx-internal."
+        pattern:
+          spec:
+            ingressClassName: nginx-internal
+    - name: no-nginx-snippets
+      match:
+        any:
+          - resources:
+              kinds: [Ingress]
+      validate:
+        failureAction: Enforce
+        message: "NGINX snippet annotations are prohibited (config injection risk)."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.annotations || `{}` | keys(@) | [?contains(@, 'snippet')] | length(@) }}"
+                operator: GreaterThan
+                value: 0
+    - name: no-automount-token
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      exclude:
+        any:
+          - resources:
+              selector:
+                matchLabels:
+                  harborline.io/kube-api-access: "approved"
+      validate:
+        failureAction: Enforce
+        message: "Set automountServiceAccountToken: false (workload identity does not need the Kubernetes API token)."
+        pattern:
+          spec:
+            automountServiceAccountToken: false

@@ -1,0 +1,16 @@
+# Root catalog entry for the IDP repository. Backstage discovers this file via the GitHub provider.
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: harborline-idp
+  description: Harborline Internal Developer Platform — all catalog entities in this repository
+spec:
+  targets:
+    - ./backstage/catalog/org.yaml
+    - ./backstage/catalog/domains-systems.yaml
+    - ./backstage/catalog/resources.yaml
+    - ./backstage/catalog/platform-components.yaml
+    - ./apps/insurance/catalog-info.yaml
+    - ./backstage/templates/python-service/template.yaml
+    - ./backstage/templates/tenant-onboarding/template.yaml
+    - ./backstage/templates/adr/template.yaml

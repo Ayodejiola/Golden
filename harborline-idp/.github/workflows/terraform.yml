@@ -1,0 +1,148 @@
+# Terraform: static checks + plan on every PR (plan posted as a PR comment and policy-checked with Conftest),
+# progressive apply on merge: shared → dev → stg → prod, each gated by its GitHub environment.
+name: terraform
+
+on:
+  pull_request:
+    paths:
+      - infra/terraform/**
+      - platform/policies/conftest/**
+      - .github/workflows/terraform.yml
+      - .github/workflows/_terraform-run.yml
+  push:
+    branches: [main]
+    paths:
+      - infra/terraform/**
+      - .github/workflows/terraform.yml
+      - .github/workflows/_terraform-run.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false   # never cancel an apply mid-flight
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - uses: terraform-linters/setup-tflint@v4
+      - name: fmt
+        run: terraform fmt -check -recursive infra/terraform
+      - name: validate + tflint (all stacks)
+        run: |
+          for s in infra/terraform/stacks/*/; do
+            terraform -chdir="$s" init -backend=false -input=false >/dev/null
+            terraform -chdir="$s" validate
+            (cd "$s" && tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl" >/dev/null && tflint --config "$GITHUB_WORKSPACE/.tflint.hcl")
+          done
+      - name: terraform test (pure modules)
+        run: terraform -chdir=infra/terraform/modules/naming init -backend=false >/dev/null && terraform -chdir=infra/terraform/modules/naming test
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/terraform
+          config_file: .checkov.yaml
+      - name: Conftest policy unit tests
+        run: |
+          curl -sSL https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz | tar -xz conftest
+          ./conftest verify --policy platform/policies/conftest
+
+  plan:
+    needs: static
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { stack: management, env: shared }
+          - { stack: connectivity, env: shared }
+          - { stack: platform, env: dev }
+          - { stack: workload-insurance, env: dev }
+          - { stack: platform, env: stg }
+          - { stack: workload-insurance, env: stg }
+          - { stack: platform, env: prod }
+          - { stack: workload-insurance, env: prod }
+    uses: ./.github/workflows/_terraform-run.yml
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    with:
+      stack: ${{ matrix.stack }}
+      env: ${{ matrix.env }}
+      mode: plan
+
+  apply-shared:
+    needs: static
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    strategy:
+      max-parallel: 1
+      matrix:
+        stack: [management, connectivity]
+    uses: ./.github/workflows/_terraform-run.yml
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    with:
+      stack: ${{ matrix.stack }}
+      env: shared
+      mode: apply
+
+  apply-dev:
+    needs: apply-shared
+    strategy:
+      max-parallel: 1
+      matrix:
+        stack: [platform, workload-insurance]
+    uses: ./.github/workflows/_terraform-run.yml
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    with:
+      stack: ${{ matrix.stack }}
+      env: dev
+      mode: apply
+
+  apply-stg:
+    needs: apply-dev
+    strategy:
+      max-parallel: 1
+      matrix:
+        stack: [platform, workload-insurance]
+    uses: ./.github/workflows/_terraform-run.yml
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    with:
+      stack: ${{ matrix.stack }}
+      env: stg
+      mode: apply
+
+  apply-prod:
+    needs: apply-stg
+    strategy:
+      max-parallel: 1
+      matrix:
+        stack: [platform, workload-insurance]
+    uses: ./.github/workflows/_terraform-run.yml
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    with:
+      stack: ${{ matrix.stack }}
+      env: prod
+      mode: apply

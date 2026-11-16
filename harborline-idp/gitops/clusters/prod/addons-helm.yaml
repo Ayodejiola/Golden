@@ -1,0 +1,65 @@
+# Helm add-ons for prod. Chart versions are pinned per environment so upgrades roll dev → stg → prod.
+# Charts are mirrored into ACR by .github/workflows/mirror-artifacts.yml (platform/mirror/artifacts.yaml).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: addons-helm
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - name: argocd
+            chart: argo-cd
+            version: 8.0.0
+            namespace: argocd
+          - name: kyverno
+            chart: kyverno
+            version: 3.3.4
+            namespace: kyverno
+          - name: opentelemetry-collector
+            chart: opentelemetry-collector
+            version: 0.110.7
+            namespace: observability
+          - name: backstage
+            chart: backstage
+            version: 2.3.0
+            namespace: backstage
+  template:
+    metadata:
+      name: "addon-{{.name}}"
+      labels:
+        harborline.io/layer: addons
+    spec:
+      project: platform
+      sources:
+        - repoURL: acrhblmgmtsharedcac01.azurecr.io/helm
+          chart: "{{.chart}}"
+          targetRevision: "{{.version}}"
+          helm:
+            releaseName: "{{.name}}"
+            ignoreMissingValueFiles: true
+            valueFiles:
+              - $values/gitops/addons/{{.name}}/values.yaml
+              - $values/gitops/addons/{{.name}}/values-prod.yaml
+        - repoURL: https://github.com/harborline/harborline-idp.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 15s
+            factor: 2
+            maxDuration: 5m

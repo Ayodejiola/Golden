@@ -1,0 +1,74 @@
+# policy-api (prod) — rendered with platform/charts/golden-service.
+# image.digest is written by CI (dev) or the promotion workflow (stg/prod). Do not edit by hand.
+team: insurance-digital
+system: policy-portal
+component: policy-api
+tier: tier-1
+dataClassification: restricted
+environment: prod
+
+image:
+  repository: acrhblmgmtsharedcac01.azurecr.io/insurance/policy-api
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  tag: "0.1.0"
+
+workloadIdentity:
+  enabled: true
+  clientId: 00000000-0000-0000-0000-000000003a01   # id-ins-policy-api-prod
+
+config:
+  DATABASE_HOST: psql-ins-prod-cac-01.postgres.database.azure.com
+  DATABASE_NAME: insurance
+  DATABASE_USER: id-ins-policy-api-prod
+  DATABASE_MIGRATION_USER: id-ins-db-migrator-prod
+  SERVICEBUS_FQDN: sbns-ins-prod-cac-01.servicebus.windows.net
+  SERVICEBUS_CLAIMS_TOPIC: claims
+  SERVICEBUS_POLICIES_TOPIC: policies
+  AUTH_TENANT_ID: 00000000-0000-0000-0000-000000000000
+  AUTH_AUDIENCE: api://harborline-policy-api
+  AUTH_REQUIRED: "true"
+  LOG_LEVEL: INFO
+  OUTBOX_POLL_SECONDS: "2"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 65
+
+topologySpread:
+  zoneWhenUnsatisfiable: DoNotSchedule
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+ingress:
+  enabled: true
+  host: portal.harborline.example
+  paths:
+    - path: /api
+      pathType: Prefix
+  keyVaultCertificateUri: https://kv-hbl-plat-prod-cac01.vault.azure.net/certificates/portal-tls
+
+networkPolicy:
+  enabled: true
+  allowFromIngressController: true
+  egress:
+    privateEndpoints:
+      - cidr: 10.30.9.0/24   # snet-pe: PostgreSQL 5432, Service Bus AMQP 5671 / AMQP-WS 443
+        ports: [5432, 5671, 443]
+
+observability:
+  otel:
+    samplerArg: "0.2"
+
+migrations:
+  enabled: true
+  command: ["python", "-m", "policy_api.migrate"]
+  serviceAccountName: db-migrator
+  workloadIdentityClientId: 00000000-0000-0000-0000-000000003a03   # id-ins-db-migrator-prod

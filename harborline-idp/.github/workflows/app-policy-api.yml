@@ -1,0 +1,89 @@
+name: app-policy-api
+
+on:
+  pull_request:
+    paths:
+      - apps/insurance/policy-api/**
+      - .github/workflows/app-policy-api.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/insurance/policy-api/**
+      - .github/workflows/app-policy-api.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-policy-api-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/_python-ci.yml
+    with:
+      working-directory: apps/insurance/policy-api
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: insurance
+          POSTGRES_PASSWORD: ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    env:
+      APP_ENVIRONMENT: local
+      AUTH_REQUIRED: "false"
+      DATABASE_HOST: localhost
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: ci-only
+      OTEL_SDK_DISABLED: "true"
+      RUN_INTEGRATION: "1"
+    defaults:
+      run:
+        working-directory: apps/insurance/policy-api
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pytest && pip install --no-deps -e .
+      - run: python -m policy_api.migrate
+      - run: python -m pytest -m integration tests/integration -q
+
+  image:
+    needs: [ci, integration]
+    uses: ./.github/workflows/_container-build.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: read
+      security-events: write
+    with:
+      image: insurance/policy-api
+      context: apps/insurance/policy-api
+      version: 0.1.${{ github.run_number }}
+      push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+
+  deploy-dev:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: image
+    uses: ./.github/workflows/_gitops-update.yml
+    with:
+      values-file: gitops/workloads/dev/insurance/policy-api/values.yaml
+      digest: ${{ needs.image.outputs.digest }}
+      version: 0.1.${{ github.run_number }}
+      auto-merge: true
+      title: policy-api 0.1.${{ github.run_number }} to dev
+    secrets:
+      GITOPS_APP_ID: ${{ secrets.GITOPS_APP_ID }}
+      GITOPS_APP_PRIVATE_KEY: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}

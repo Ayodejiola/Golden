@@ -1,0 +1,151 @@
+# Harborline golden-service chart — defaults are the secure, production-grade baseline.
+# Override per environment in gitops/workloads/<env>/<team>/<app>/values.yaml. Schema: values.schema.json.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ---- Platform metadata (required; becomes labels used for cost, ownership, policy and dashboards) ----
+team: ""                       # Backstage group, e.g. insurance-digital
+system: ""                     # Backstage system, e.g. policy-portal
+component: ""                  # Backstage component; defaults to the release name
+tier: tier-3                   # tier-0..tier-3 (docs/operations/slos.md)
+dataClassification: internal   # public | internal | confidential | restricted
+environment: dev               # dev | stg | prod
+
+image:
+  repository: ""               # <acr>.azurecr.io/<team>/<app>
+  digest: ""                   # sha256:<64 hex> — deploys are digest-pinned (ADR-0012)
+  tag: ""                      # informational: rendered as app.kubernetes.io/version
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+command: []
+args: []
+containerPort: 8080
+terminationGracePeriodSeconds: 30
+
+service:
+  enabled: true
+  port: 80
+
+# Plain, non-sensitive configuration rendered into a ConfigMap and injected as environment variables.
+config: {}
+# Extra env entries in Kubernetes syntax (e.g. downward API).
+extraEnv: []
+
+# Secrets from Key Vault via the Secrets Store CSI driver, mounted as files under /mnt/secrets (never env by default).
+secrets:
+  enabled: false
+  keyVaultName: ""
+  tenantId: ""
+  objects: []                  # - { name: partner-api-key, type: secret }
+
+workloadIdentity:
+  enabled: true
+  clientId: ""                 # from Terraform output workload_identity_client_ids
+
+serviceAccount:
+  name: ""                     # defaults to the fullname
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi              # memory limit mandatory; no CPU limit by default (avoids CFS throttling)
+
+probes:
+  liveness:
+    path: /healthz/live
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    path: /healthz/ready
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+  startup:
+    path: /healthz/live
+    periodSeconds: 2
+    failureThreshold: 30
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Event-driven scaling with AKS-managed KEDA (replaces the HPA when enabled).
+keda:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 20
+  identityClientId: ""         # KEDA scaler identity federated to kube-system/keda-operator
+  serviceBus:
+    namespace: ""              # namespace name (not FQDN), e.g. sbns-ins-dev-cac-01
+    topicName: ""
+    subscriptionName: ""
+    queueName: ""
+    messageCount: "20"
+
+pdb:
+  enabled: true
+  maxUnavailable: 1
+
+topologySpread:
+  zoneWhenUnsatisfiable: ScheduleAnyway    # DoNotSchedule in prod
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+ingress:
+  enabled: false
+  className: nginx-internal
+  host: ""
+  paths:
+    - path: /
+      pathType: Prefix
+  keyVaultCertificateUri: ""   # https://<kv>.vault.azure.net/certificates/<name>
+  annotations: {}
+
+networkPolicy:
+  enabled: true
+  allowFromIngressController: true
+  allowFromNamespaces: []      # namespace names
+  allowFromSameNamespaceApps: []  # app.kubernetes.io/name values in the same namespace
+  egress:
+    allowDns: true
+    allowOtelCollector: true
+    allowEntraId: true         # 443 to non-private ranges; the hub firewall enforces the FQDN allow-list
+    privateEndpoints: []       # - { cidr: 10.10.9.0/24, ports: [5432, 5671, 443] }
+    sameNamespaceApps: []      # - { app: policy-api, port: 8080 }
+
+observability:
+  otel:
+    enabled: true
+    endpoint: http://otel-collector.observability.svc.cluster.local:4317
+    serviceNamespace: ""       # defaults to team
+    sampler: parentbased_traceidratio
+    samplerArg: "1.0"          # collector does tail sampling
+  podMonitor:
+    enabled: false             # only for apps exposing /metrics directly
+    port: http
+    path: /metrics
+
+migrations:
+  enabled: false
+  command: []
+  serviceAccountName: db-migrator
+  workloadIdentityClientId: ""
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+
+nodeSelector:
+  harborline.io/pool: apps
+tolerations: []
+affinity: {}
+priorityClassName: ""
+podAnnotations: {}
+podLabels: {}
+extraVolumes: []
+extraVolumeMounts: []

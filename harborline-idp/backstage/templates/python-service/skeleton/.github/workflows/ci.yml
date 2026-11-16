@@ -1,0 +1,44 @@
+# Golden-path pipeline: all heavy lifting lives in harborline/harborline-idp reusable workflows, so security
+# controls improve for every service at once. Repo variable TEAM is set by the Backstage template.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: harborline/harborline-idp/.github/workflows/_python-ci.yml@main
+    with:
+      working-directory: .
+
+  image:
+    needs: ci
+    uses: harborline/harborline-idp/.github/workflows/_container-build.yml@main
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: read
+      security-events: write
+    with:
+      image: ${{ vars.TEAM }}/${{ github.event.repository.name }}
+      context: .
+      version: 0.1.${{ github.run_number }}
+      push: ${{ github.event_name == 'push' }}
+
+  deploy-dev:
+    if: github.event_name == 'push'
+    needs: image
+    uses: harborline/harborline-idp/.github/workflows/_gitops-update.yml@main
+    with:
+      values-file: gitops/workloads/dev/${{ vars.TEAM }}/${{ github.event.repository.name }}/values.yaml
+      digest: ${{ needs.image.outputs.digest }}
+      version: 0.1.${{ github.run_number }}
+      auto-merge: true
+      title: ${{ github.event.repository.name }} 0.1.${{ github.run_number }} to dev
+    secrets: inherit

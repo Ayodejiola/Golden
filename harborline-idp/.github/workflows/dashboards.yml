@@ -1,0 +1,37 @@
+# Publishes Grafana dashboards-as-code to Azure Managed Grafana.
+name: dashboards
+
+on:
+  push:
+    branches: [main]
+    paths: [platform/observability/dashboards/**]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: shared
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.MANAGEMENT_SUBSCRIPTION_ID }}
+      - name: Import dashboards
+        run: |
+          az extension add --name amg --upgrade --only-show-errors
+          folder="Harborline"
+          az grafana folder show -n amg-hbl-mgmt-shared-cac -g rg-mgmt-shared-cac-01 --folder "$folder" >/dev/null 2>&1 \
+            || az grafana folder create -n amg-hbl-mgmt-shared-cac -g rg-mgmt-shared-cac-01 --title "$folder"
+          for f in platform/observability/dashboards/*.json; do
+            az grafana dashboard import -n amg-hbl-mgmt-shared-cac -g rg-mgmt-shared-cac-01 --folder "$folder" --overwrite true --definition "$f"
+          done

@@ -1,0 +1,132 @@
+# OpenTelemetry Collector (open-telemetry/opentelemetry-collector chart) — the single telemetry gateway (ADR-0009).
+# Apps send OTLP here; traces + logs go to Application Insights, metrics are exposed for managed Prometheus.
+fullnameOverride: otel-collector
+mode: deployment
+replicaCount: 2
+
+image:
+  repository: acrhblmgmtsharedcac01.azurecr.io/mirror/otel/opentelemetry-collector-contrib
+command:
+  name: otelcol-contrib
+
+presets:
+  kubernetesAttributes:
+    enabled: true
+
+serviceAccount:
+  create: true
+  name: otel-collector
+
+podLabels:
+  azure.workload.identity/use: "true"
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
+resources:
+  requests: { cpu: 200m, memory: 512Mi }
+  limits: { memory: 1Gi }
+
+ports:
+  prometheus:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+
+extraVolumes:
+  - name: secrets
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: otel-collector
+extraVolumeMounts:
+  - name: secrets
+    mountPath: /mnt/secrets
+    readOnly: true
+
+config:
+  extensions:
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: ${env:MY_POD_IP}:4317
+        http:
+          endpoint: ${env:MY_POD_IP}:4318
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    batch:
+      send_batch_size: 8192
+      timeout: 5s
+    # Drop probe noise before it costs money.
+    filter/health:
+      error_mode: ignore
+      traces:
+        span:
+          - 'attributes["url.path"] != nil and IsMatch(attributes["url.path"], "^/healthz")'
+    # Defence in depth against PII leaking into telemetry (apps must not send it in the first place).
+    attributes/scrub:
+      actions:
+        - key: http.request.header.authorization
+          action: delete
+        - key: http.request.header.cookie
+          action: delete
+        - key: enduser.id
+          action: hash
+        - key: db.query.text
+          action: delete
+    redaction:
+      allow_all_keys: true
+      blocked_values:
+        - "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"   # email addresses
+        - "\\b\\d{3}[- ]?\\d{3}[- ]?\\d{3}\\b"                  # Canadian SIN-shaped numbers
+        - "\\b(?:\\d[ -]*?){13,16}\\b"                          # payment card-shaped numbers
+      summary: silent
+    resource/env:
+      attributes:
+        - key: cloud.provider
+          value: azure
+          action: upsert
+        - key: cloud.region
+          value: canadacentral
+          action: upsert
+  exporters:
+    azuremonitor:
+      connection_string: ${file:/mnt/secrets/appinsights-connection-string}
+    prometheus:
+      endpoint: ${env:MY_POD_IP}:8889
+      resource_to_telemetry_conversion:
+        enabled: true
+      enable_open_metrics: true
+  service:
+    extensions: [health_check]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, filter/health, k8sattributes, attributes/scrub, redaction, resource/env, batch]
+        exporters: [azuremonitor]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, k8sattributes, resource/env, batch]
+        exporters: [prometheus]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, k8sattributes, attributes/scrub, redaction, resource/env, batch]
+        exporters: [azuremonitor]
+    telemetry:
+      metrics:
+        level: normal

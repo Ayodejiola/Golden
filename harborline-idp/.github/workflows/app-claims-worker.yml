@@ -1,0 +1,55 @@
+name: app-claims-worker
+
+on:
+  pull_request:
+    paths:
+      - apps/insurance/claims-worker/**
+      - .github/workflows/app-claims-worker.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/insurance/claims-worker/**
+      - .github/workflows/app-claims-worker.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-claims-worker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    uses: ./.github/workflows/_python-ci.yml
+    with:
+      working-directory: apps/insurance/claims-worker
+
+  image:
+    needs: ci
+    uses: ./.github/workflows/_container-build.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      packages: read
+      security-events: write
+    with:
+      image: insurance/claims-worker
+      context: apps/insurance/claims-worker
+      version: 0.1.${{ github.run_number }}
+      push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+
+  deploy-dev:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: image
+    uses: ./.github/workflows/_gitops-update.yml
+    with:
+      values-file: gitops/workloads/dev/insurance/claims-worker/values.yaml
+      digest: ${{ needs.image.outputs.digest }}
+      version: 0.1.${{ github.run_number }}
+      auto-merge: true
+      title: claims-worker 0.1.${{ github.run_number }} to dev
+    secrets:
+      GITOPS_APP_ID: ${{ secrets.GITOPS_APP_ID }}
+      GITOPS_APP_PRIVATE_KEY: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}

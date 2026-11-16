@@ -1,0 +1,46 @@
+# Kyverno (kyverno/kyverno chart). Policies are delivered separately (addon-kyverno-policies).
+global:
+  image:
+    registry: acrhblmgmtsharedcac01.azurecr.io/mirror
+  nodeSelector:
+    harborline.io/pool: system
+  tolerations:
+    - key: CriticalAddonsOnly
+      operator: Exists
+      effect: NoSchedule
+
+admissionController:
+  replicas: 3
+  podLabels:
+    azure.workload.identity/use: "true"   # ACR auth for verifyImages via workload identity
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+  container:
+    resources:
+      requests: { cpu: 200m, memory: 256Mi }
+      limits: { memory: 768Mi }
+  serviceMonitor:
+    enabled: false   # scraped via PodMonitor in platform-config
+
+backgroundController:
+  replicas: 2
+  rbac:
+    clusterRole:
+      extraResources:
+        - apiGroups: ["networking.k8s.io"]
+          resources: ["networkpolicies"]
+          verbs: ["create", "update", "patch", "delete", "get", "list", "watch"]
+
+cleanupController:
+  replicas: 2
+
+reportsController:
+  replicas: 2
+
+features:
+  policyExceptions:
+    enabled: true
+    namespace: kyverno   # exceptions only from the platform-owned namespace (governed by PR + CODEOWNERS)
+  admissionReports:
+    enabled: false

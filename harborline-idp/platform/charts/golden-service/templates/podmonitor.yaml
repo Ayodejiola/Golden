@@ -1,0 +1,18 @@
+{{- if .Values.observability.podMonitor.enabled }}
+# Azure Monitor managed Prometheus custom resource (ama-metrics), not the prometheus-operator CRD.
+apiVersion: azmonitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "gs.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "gs.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "gs.selectorLabels" . | nindent 6 }}
+  podMetricsEndpoints:
+    - port: {{ .Values.observability.podMonitor.port }}
+      path: {{ .Values.observability.podMonitor.path }}
+      interval: 30s
+{{- end }}

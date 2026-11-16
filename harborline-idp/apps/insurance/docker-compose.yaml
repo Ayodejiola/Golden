@@ -1,0 +1,85 @@
+# Local development stack — synthetic data only, local-only credentials (never used outside this file).
+# make app-up  →  web http://localhost:8081  ·  API http://localhost:8080/api/docs
+name: harborline-insurance
+
+x-app-env: &app-env
+  APP_ENVIRONMENT: local
+  AUTH_REQUIRED: "false"
+  DATABASE_HOST: postgres
+  DATABASE_NAME: insurance
+  DATABASE_USER: postgres
+  DATABASE_PASSWORD: ${LOCAL_DB_PASSWORD:-local-dev-only}
+  SERVICEBUS_CONNECTION_STRING: "Endpoint=sb://servicebus;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;"
+  OTEL_SDK_DISABLED: "true"
+  LOG_LEVEL: DEBUG
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: insurance
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-local-dev-only}
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  sqledge:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${LOCAL_SQL_PASSWORD:-Local_Dev_Only_1}
+
+  servicebus:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    depends_on: [sqledge]
+    environment:
+      SQL_SERVER: sqledge
+      MSSQL_SA_PASSWORD: ${LOCAL_SQL_PASSWORD:-Local_Dev_Only_1}
+      ACCEPT_EULA: "Y"
+    volumes:
+      - ./local/servicebus-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+    ports: ["5672:5672"]
+
+  migrate:
+    build: ./policy-api
+    entrypoint: ["python", "-m", "policy_api.migrate"]
+    environment: *app-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  policy-api:
+    build: ./policy-api
+    environment: *app-env
+    ports: ["8080:8080"]
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      servicebus: { condition: service_started }
+
+  claims-worker:
+    build: ./claims-worker
+    environment:
+      <<: *app-env
+      SERVICEBUS_TOPIC: claims
+      SERVICEBUS_SUBSCRIPTION: triage
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      servicebus: { condition: service_started }
+
+  web:
+    build: ./web
+    environment:
+      WEB_API_BASE: /api
+      WEB_ENTRA_TENANT_ID: local
+      WEB_ENTRA_CLIENT_ID: local          # "local" disables MSAL; the API runs with AUTH_REQUIRED=false
+      WEB_API_SCOPE: local
+    volumes:
+      - ./local/web-local.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports: ["8081:8080"]
+    read_only: true
+    tmpfs: [/tmp]

@@ -1,0 +1,74 @@
+# policy-api (dev) — rendered with platform/charts/golden-service.
+# image.digest is written by CI (dev) or the promotion workflow (stg/prod). Do not edit by hand.
+team: insurance-digital
+system: policy-portal
+component: policy-api
+tier: tier-1
+dataClassification: restricted
+environment: dev
+
+image:
+  repository: acrhblmgmtsharedcac01.azurecr.io/insurance/policy-api
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  tag: "0.1.0"
+
+workloadIdentity:
+  enabled: true
+  clientId: 00000000-0000-0000-0000-000000001a01   # id-ins-policy-api-dev
+
+config:
+  DATABASE_HOST: psql-ins-dev-cac-01.postgres.database.azure.com
+  DATABASE_NAME: insurance
+  DATABASE_USER: id-ins-policy-api-dev
+  DATABASE_MIGRATION_USER: id-ins-db-migrator-dev
+  SERVICEBUS_FQDN: sbns-ins-dev-cac-01.servicebus.windows.net
+  SERVICEBUS_CLAIMS_TOPIC: claims
+  SERVICEBUS_POLICIES_TOPIC: policies
+  AUTH_TENANT_ID: 00000000-0000-0000-0000-000000000000
+  AUTH_AUDIENCE: api://harborline-policy-api
+  AUTH_REQUIRED: "true"
+  LOG_LEVEL: DEBUG
+  OUTBOX_POLL_SECONDS: "2"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 65
+
+topologySpread:
+  zoneWhenUnsatisfiable: ScheduleAnyway
+  hostWhenUnsatisfiable: ScheduleAnyway
+
+ingress:
+  enabled: true
+  host: portal.dev.harborline.example
+  paths:
+    - path: /api
+      pathType: Prefix
+  keyVaultCertificateUri: https://kv-hbl-plat-dev-cac01.vault.azure.net/certificates/portal-tls
+
+networkPolicy:
+  enabled: true
+  allowFromIngressController: true
+  egress:
+    privateEndpoints:
+      - cidr: 10.10.9.0/24   # snet-pe: PostgreSQL 5432, Service Bus AMQP 5671 / AMQP-WS 443
+        ports: [5432, 5671, 443]
+
+observability:
+  otel:
+    samplerArg: "1.0"
+
+migrations:
+  enabled: true
+  command: ["python", "-m", "policy_api.migrate"]
+  serviceAccountName: db-migrator
+  workloadIdentityClientId: 00000000-0000-0000-0000-000000001a03   # id-ins-db-migrator-dev

@@ -1,0 +1,93 @@
+# Argo CD (argo-cd Helm chart) — shared values for every cluster. Env specifics: values-<env>.yaml.
+# Installed once by scripts/bootstrap-argocd.sh, then self-managed by the addons-helm ApplicationSet.
+global:
+  image:
+    repository: acrhblmgmtsharedcac01.azurecr.io/mirror/argoproj/argocd
+  logging:
+    format: json
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  nodeSelector:
+    harborline.io/pool: apps
+
+dex:
+  enabled: false   # SSO via Entra ID OIDC directly
+
+redis:
+  image:
+    repository: acrhblmgmtsharedcac01.azurecr.io/mirror/library/redis
+
+configs:
+  params:
+    server.insecure: false
+    controller.diff.server.side: "true"
+    applicationsetcontroller.policy: create-update   # ApplicationSets never delete Applications
+  cm:
+    admin.enabled: "false"
+    exec.enabled: "false"
+    statusbadge.enabled: "false"
+    users.anonymous.enabled: "false"
+    timeout.reconciliation: 180s
+    resource.customizations.ignoreDifferences.admissionregistration.k8s.io_MutatingWebhookConfiguration: |
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+    resource.exclusions: |
+      - apiGroups: ["cilium.io"]
+        kinds: ["CiliumIdentity", "CiliumEndpoint", "CiliumEndpointSlice"]
+        clusters: ["*"]
+      - apiGroups: ["kyverno.io", "wgpolicyk8s.io", "reports.kyverno.io"]
+        kinds: ["PolicyReport", "ClusterPolicyReport", "EphemeralReport", "ClusterEphemeralReport", "AdmissionReport", "BackgroundScanReport"]
+        clusters: ["*"]
+  rbac:
+    policy.default: ""          # deny by default; access comes from Entra groups only
+    scopes: "[groups]"
+  repositories:
+    harborline-acr-helm:
+      type: helm
+      name: harborline-acr
+      url: acrhblmgmtsharedcac01.azurecr.io/helm
+      enableOCI: "true"
+      useAzureWorkloadIdentity: "true"
+
+controller:
+  replicas: 1
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { memory: 2Gi }
+  metrics:
+    enabled: true
+
+server:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  podLabels:
+    azure.workload.identity/use: "true"
+  ingress:
+    enabled: true
+    ingressClassName: nginx-internal
+    annotations:
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+  metrics:
+    enabled: true
+
+repoServer:
+  replicas: 2
+  podLabels:
+    azure.workload.identity/use: "true"
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+  metrics:
+    enabled: true
+
+applicationSet:
+  replicas: 2
+  metrics:
+    enabled: true
+
+notifications:
+  enabled: true

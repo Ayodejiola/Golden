@@ -1,0 +1,38 @@
+# Third-party artefacts allowed into the platform (ADR-0012). The mirror workflow imports each one into the
+# shared ACR only after a Trivy scan passes (no unwaived CRITICAL). Clusters can only pull from ACR.
+# Versions are pinned; Renovate opens PRs for updates. Verify versions exist before the first run.
+registry: acrhblmgmtsharedcac01.azurecr.io
+
+charts:
+  - name: argo-cd
+    repo: https://argoproj.github.io/argo-helm
+    version: 8.0.0
+  - name: kyverno
+    repo: https://kyverno.github.io/kyverno
+    version: 3.3.4
+  - name: opentelemetry-collector
+    repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+    version: 0.110.7
+  - name: backstage
+    repo: https://backstage.github.io/charts
+    version: 2.3.0
+
+images:
+  - source: quay.io/argoproj/argocd:v3.0.0
+    target: mirror/argoproj/argocd:v3.0.0
+  - source: docker.io/library/redis:7.4.1-alpine
+    target: mirror/library/redis:7.4.1-alpine
+  - source: docker.io/library/haproxy:3.0.7-alpine
+    target: mirror/library/haproxy:3.0.7-alpine
+  - source: reg.kyverno.io/kyverno/kyverno:v1.13.2
+    target: mirror/kyverno/kyverno:v1.13.2
+  - source: reg.kyverno.io/kyverno/kyvernopre:v1.13.2
+    target: mirror/kyverno/kyvernopre:v1.13.2
+  - source: reg.kyverno.io/kyverno/background-controller:v1.13.2
+    target: mirror/kyverno/background-controller:v1.13.2
+  - source: reg.kyverno.io/kyverno/cleanup-controller:v1.13.2
+    target: mirror/kyverno/cleanup-controller:v1.13.2
+  - source: reg.kyverno.io/kyverno/reports-controller:v1.13.2
+    target: mirror/kyverno/reports-controller:v1.13.2
+  - source: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.115.1
+    target: mirror/otel/opentelemetry-collector-contrib:0.115.1

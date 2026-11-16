@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - target:
+      kind: ResourceQuota
+      name: tenant-quota
+    patch: |-
+      - op: replace
+        path: /spec/hard/requests.cpu
+        value: "24"
+      - op: replace
+        path: /spec/hard/requests.memory
+        value: 48Gi
+      - op: replace
+        path: /spec/hard/limits.memory
+        value: 96Gi
+      - op: replace
+        path: /spec/hard/pods
+        value: "150"
+  # Prod change freeze outside business hours (Atlantic time). Manual sync allowed for incident fixes.
+  - target:
+      kind: AppProject
+      name: insurance
+    patch: |-
+      - op: add
+        path: /spec/syncWindows
+        value:
+          - kind: deny
+            schedule: "0 20 * * 5"
+            duration: 58h
+            timeZone: America/Moncton
+            applications: ["*"]
+            manualSync: true
+          - kind: deny
+            schedule: "0 18 * * 1-4"
+            duration: 14h
+            timeZone: America/Moncton
+            applications: ["*"]
+            manualSync: true

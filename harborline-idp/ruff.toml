@@ -1,0 +1,7 @@
+# Repository-wide defaults; services override in their own pyproject.toml.
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "B", "S", "UP", "SIM", "RUF"]
+ignore = ["S101", "S603"]

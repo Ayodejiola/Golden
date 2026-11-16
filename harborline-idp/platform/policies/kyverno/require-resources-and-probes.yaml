@@ -1,0 +1,53 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resources-and-probes
+  annotations:
+    policies.kyverno.io/title: Require resource requests, memory limits and health probes
+    policies.kyverno.io/category: Reliability
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Requests make scheduling and autoscaling predictable; memory limits contain noisy neighbours;
+      readiness/liveness probes enable safe rollouts (WAF Reliability).
+    harborline.io/controls: "NIST-PR.IR-04"
+spec:
+  background: true
+  rules:
+    - name: requests-and-memory-limit
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        message: "Every container needs cpu+memory requests and a memory limit."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    memory: "?*"
+    - name: probes
+      match:
+        any:
+          - resources:
+              kinds: [Deployment, StatefulSet]
+              namespaceSelector:
+                matchLabels:
+                  harborline.io/tenant: "true"
+      validate:
+        failureAction: Enforce
+        message: "Long-running workloads need readiness and liveness probes."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - readinessProbe: {}
+                    livenessProbe: {}

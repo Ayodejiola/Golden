@@ -1,0 +1,18 @@
+%% Source of truth: docs/architecture/overview.md (keep in sync; `make diagrams` renders SVG)
+flowchart TB
+  subgraph mg[Management groups]
+    root[hbl] --> platform[Platform] & lz[Landing zones] & sandbox[Sandbox]
+    platform --> mgmt[Management] & conn[Connectivity] & ident[Identity]
+    lz --> corp[Corp]
+  end
+  subgraph subs[Subscriptions]
+    smgmt[sub-mgmt: Log Analytics, AMW, Grafana, ACR, CI identities, TF state]
+    sconn[sub-connectivity: hub VNet, Firewall Premium, Bastion, Private DNS]
+    sdev[sub-lz-dev: spoke 10.10/16, AKS, KV, AGW, PG, SB]
+    sstg[sub-lz-stg: spoke 10.20/16]
+    sprod[sub-lz-prod: spoke 10.30/16 + Backstage]
+  end
+  mgmt --- smgmt
+  conn --- sconn
+  corp --- sdev & sstg & sprod
+  sdev & sstg & sprod <-->|peering, UDR 0/0 → firewall| sconn

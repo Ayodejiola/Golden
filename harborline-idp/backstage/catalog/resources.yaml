@@ -1,0 +1,73 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: aks-plat-dev
+  title: AKS cluster (dev)
+  annotations:
+    harborline.io/azure-resource: aks-plat-dev-cac-01
+spec:
+  type: kubernetes-cluster
+  owner: group:default/platform-engineering
+  system: harborline-idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: aks-plat-stg
+  title: AKS cluster (stg)
+  annotations:
+    harborline.io/azure-resource: aks-plat-stg-cac-01
+spec:
+  type: kubernetes-cluster
+  owner: group:default/platform-engineering
+  system: harborline-idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: aks-plat-prod
+  title: AKS cluster (prod)
+  annotations:
+    harborline.io/azure-resource: aks-plat-prod-cac-01
+spec:
+  type: kubernetes-cluster
+  owner: group:default/platform-engineering
+  system: harborline-idp
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: psql-ins
+  title: Insurance PostgreSQL (per environment)
+  annotations:
+    harborline.io/azure-resource: psql-ins-<env>-cac-01
+    harborline.io/data-classification: restricted
+spec:
+  type: database
+  owner: group:default/insurance-digital
+  system: policy-portal
+  dependsOn: [resource:default/aks-plat-prod]
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: sbns-ins
+  title: Insurance Service Bus namespace (per environment)
+  annotations:
+    harborline.io/azure-resource: sbns-ins-<env>-cac-01
+spec:
+  type: message-broker
+  owner: group:default/insurance-digital
+  system: policy-portal
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: acr-shared
+  title: Shared container registry
+  annotations:
+    harborline.io/azure-resource: acrhblmgmtsharedcac01
+spec:
+  type: container-registry
+  owner: group:default/platform-engineering
+  system: harborline-idp
